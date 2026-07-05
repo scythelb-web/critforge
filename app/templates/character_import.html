@@ -7,7 +7,7 @@
     {% if not pre_fill %}
     <!-- ═══ STEP 1: Upload or Paste ═══ -->
     <h1>📋 Import Character</h1>
-    <p class="subtitle">Upload a PDF character sheet or paste your stats as plain text. We'll parse out what we can and pre-fill the form for you.</p>
+    <p class="subtitle">Already have a character? Upload their sheet or paste their stats — any level, any class, any source. D&amp;D Beyond, hand-filled sheets, other VTTs, even a stat block scribbled in Notepad. We'll pull in what we can and pre-fill the form so you don't have to re-type everything.</p>
 
     {% if error %}
     <div class="alert alert-error">{{ error }}</div>
@@ -60,7 +60,6 @@
     {% else %}
     <!-- ═══ STEP 2: Review & Create ═══ -->
     <h1>✅ Review Imported Character</h1>
-
     {% if pre_fill.parse_confidence > 0 %}
     <div class="confidence-bar">
         <div class="confidence-label">
