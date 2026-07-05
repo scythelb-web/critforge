@@ -16,7 +16,7 @@ def init_db():
 
             CREATE TABLE IF NOT EXISTS characters (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                campaign_id INTEGER NOT NULL,
+                campaign_id INTEGER,
                 player_name TEXT NOT NULL,
                 character_name TEXT NOT NULL,
                 class_name TEXT NOT NULL,

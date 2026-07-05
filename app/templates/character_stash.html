@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Your Characters — CritForge{% endblock %}
+
+{% block content %}
+<div class="lobby">
+    <div class="lobby-header">
+        <h1>🎒 Your Character Roster</h1>
+        <p>Characters not yet in a campaign. Build one, then bring it to any game.</p>
+    </div>
+
+    <div class="lobby-actions">
+        <a href="/characters/new" class="btn btn-primary btn-lg">🧙 Create New Character</a>
+        <a href="/" class="btn btn-sm">← Back Home</a>
+    </div>
+
+    {% if characters %}
+    <div class="character-list">
+        <h2>Your Characters ({{ characters|length }})</h2>
+        <p style="color:#888;font-size:13px;margin-bottom:16px;">
+            Share these with your DM when you join a campaign — or create one during a campaign from the lobby.
+        </p>
+        <div class="char-cards">
+            {% for char in characters %}
+            <div class="char-card">
+                <h3>{{ char.character_name }}</h3>
+                <p><strong>{{ char.race }}</strong> — Level {{ char.level }} {{ char.class_name }}</p>
+                <p class="player">played by {{ char.player_name }}</p>
+                <div style="display:flex;gap:6px;margin-top:8px;">
+                    <a href="/characters/{{ char.id }}" class="btn btn-sm">View Sheet</a>
+                    <a href="/characters/{{ char.id }}/edit" class="btn btn-sm">Edit</a>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No characters yet! Create your first one — takes 60 seconds.</p>
+        <a href="/characters/new" class="btn btn-primary" style="margin-top:12px;">🧙 Build a Character</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

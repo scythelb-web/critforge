@@ -57,12 +57,47 @@ async def campaign_lobby(request: Request, invite_code: str):
             (campaign["id"],),
         ).fetchall()
 
+        # Also get unassigned characters for the "bring existing" option
+        unassigned = db.execute(
+            "SELECT * FROM characters WHERE campaign_id IS NULL ORDER BY created_at DESC"
+        ).fetchall()
+
     return _render(
         request,
         "campaign_lobby.html",
         campaign=campaign,
         characters=characters,
+        unassigned=unassigned,
     )
+
+
+@router.post("/{invite_code}/join")
+async def join_campaign(invite_code: str, character_id: int = Form(...)):
+    """Bring an existing standalone character into this campaign."""
+    with get_db() as db:
+        campaign = db.execute(
+            "SELECT * FROM campaigns WHERE invite_code = ?", (invite_code,)
+        ).fetchone()
+        if not campaign:
+            return HTMLResponse("<h1>Campaign not found</h1>", status_code=404)
+
+        char = db.execute("SELECT * FROM characters WHERE id = ?", (character_id,)).fetchone()
+        if not char:
+            return HTMLResponse("<h1>Character not found</h1>", status_code=404)
+
+        # Attach to campaign
+        db.execute(
+            "UPDATE characters SET campaign_id = ? WHERE id = ?",
+            (campaign["id"], character_id),
+        )
+
+        # Auto-create a token
+        db.execute(
+            "INSERT INTO map_tokens (campaign_id, character_id, name) VALUES (?, ?, ?)",
+            (campaign["id"], character_id, char["character_name"]),
+        )
+
+    return RedirectResponse(f"/campaigns/{invite_code}", status_code=303)
 
 
 @router.get("/{invite_code}/api")

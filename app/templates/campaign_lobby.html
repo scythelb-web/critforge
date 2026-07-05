@@ -22,6 +22,28 @@
         </a>
     </div>
 
+    {% if unassigned %}
+    <div class="character-list" style="margin-bottom:24px;">
+        <h2>🎒 Bring an Existing Character</h2>
+        <p style="color:#888;font-size:13px;margin-bottom:12px;">
+            You have standalone characters ready to join this campaign.
+        </p>
+        <div class="char-cards">
+            {% for char in unassigned %}
+            <div class="char-card">
+                <h3>{{ char.character_name }}</h3>
+                <p><strong>{{ char.race }}</strong> — Level {{ char.level }} {{ char.class_name }}</p>
+                <p class="player">played by {{ char.player_name }}</p>
+                <form method="POST" action="/campaigns/{{ campaign.invite_code }}/join" style="margin-top:8px;">
+                    <input type="hidden" name="character_id" value="{{ char.id }}">
+                    <button type="submit" class="btn btn-sm btn-success">➕ Join Campaign</button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     {% if characters %}
     <div class="character-list">
         <h2>Characters ({{ characters|length }})</h2>

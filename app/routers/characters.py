@@ -24,6 +24,93 @@ DND_ALIGNMENTS = [
 ]
 
 
+# ═══ STANDALONE CHARACTER BUILDER (no campaign needed) ═══════
+
+@router.get("/new", response_class=HTMLResponse)
+async def new_character_page(request: Request):
+    """Create a character without tying it to a campaign yet."""
+    return _render(
+        request,
+        "character_create_standalone.html",
+        stats=DND_STATS,
+        skills=DND_SKILLS,
+        alignments=DND_ALIGNMENTS,
+    )
+
+
+@router.post("/new")
+async def create_standalone_character(
+    request: Request,
+    player_name: str = Form(...),
+    character_name: str = Form(...),
+    class_name: str = Form(...),
+    race: str = Form(...),
+    level: int = Form(1),
+    background: str = Form(""),
+    alignment: str = Form("True Neutral"),
+    hp_max: int = Form(10),
+    ac: int = Form(10),
+    initiative_bonus: int = Form(0),
+    speed: int = Form(30),
+    stat_STR: int = Form(10),
+    stat_DEX: int = Form(10),
+    stat_CON: int = Form(10),
+    stat_INT: int = Form(10),
+    stat_WIS: int = Form(10),
+    stat_CHA: int = Form(10),
+    proficiencies: str = Form(""),
+    features: str = Form(""),
+    equipment: str = Form(""),
+    spells: str = Form(""),
+    notes: str = Form(""),
+):
+    stats = {
+        "STR": stat_STR, "DEX": stat_DEX, "CON": stat_CON,
+        "INT": stat_INT, "WIS": stat_WIS, "CHA": stat_CHA,
+    }
+    prof_list = [p.strip() for p in proficiencies.split(",") if p.strip()]
+    feat_list = [f.strip() for f in features.split("\n") if f.strip()]
+    equip_list = [e.strip() for e in equipment.split("\n") if e.strip()]
+    spell_list = [s.strip() for s in spells.split("\n") if s.strip()]
+
+    with get_db() as db:
+        cursor = db.execute(
+            """
+            INSERT INTO characters
+            (campaign_id, player_name, character_name, class_name, race, level,
+             background, alignment, stats, hp_max, hp_current, ac,
+             initiative_bonus, speed, proficiencies, features, equipment, spells, notes)
+            VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                player_name, character_name, class_name, race, level,
+                background, alignment, json.dumps(stats), hp_max, hp_max, ac,
+                initiative_bonus, speed, json.dumps(prof_list), json.dumps(feat_list),
+                json.dumps(equip_list), json.dumps(spell_list), notes,
+            ),
+        )
+        char_id = cursor.lastrowid
+
+    return RedirectResponse(f"/characters/{char_id}", status_code=303)
+
+
+@router.get("/stash", response_class=HTMLResponse)
+async def character_stash(request: Request):
+    """Show all unassigned characters (players' personal roster)."""
+    with get_db() as db:
+        chars = db.execute(
+            "SELECT * FROM characters WHERE campaign_id IS NULL ORDER BY created_at DESC"
+        ).fetchall()
+
+    return _render(
+        request,
+        "character_stash.html",
+        characters=chars,
+    )
+
+
+# ═══ CAMPAIGN-LINKED CHARACTERS ═══════════════════════════════
+
 @router.get("/create/{invite_code}", response_class=HTMLResponse)
 async def create_character_page(request: Request, invite_code: str):
     with get_db() as db:
