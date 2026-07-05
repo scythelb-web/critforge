@@ -2,7 +2,6 @@
 
 from pathlib import Path
 from fastapi import FastAPI, Request
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 
 from app.templating import render
@@ -27,6 +26,14 @@ app.include_router(campaigns.router, prefix="/campaigns", tags=["campaigns"])
 app.include_router(characters.router, prefix="/characters", tags=["characters"])
 app.include_router(game.router, prefix="/game", tags=["game"])
 
-# Static files (after routes to avoid conflicts)
+# Static files — served as route for Render compatibility
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
-app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+@app.get("/static/{filename:path}")
+async def serve_static(filename: str):
+    from fastapi.responses import FileResponse
+    filepath = _STATIC_DIR / filename
+    if not filepath.exists():
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse("", status_code=404)
+    return FileResponse(str(filepath))
