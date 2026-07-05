@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ campaign.name }} — CritForge{% endblock %}
+
+{% block content %}
+<div class="lobby">
+    <div class="lobby-header">
+        <h1>{{ campaign.name }}</h1>
+        <p class="dm-tag">DM: {{ campaign.dm_name }}</p>
+        <div class="invite-box">
+            <span>Invite Link:</span>
+            <code id="invite-link">{{ request.base_url }}game/{{ campaign.invite_code }}</code>
+            <button onclick="copyInvite()" class="btn btn-sm">📋 Copy</button>
+        </div>
+    </div>
+
+    <div class="lobby-actions">
+        <a href="/characters/create/{{ campaign.invite_code }}" class="btn btn-primary btn-lg">
+            🧙 Create Character
+        </a>
+        <a href="/game/{{ campaign.invite_code }}" class="btn btn-success btn-lg">
+            🎲 Enter Game Table
+        </a>
+    </div>
+
+    {% if characters %}
+    <div class="character-list">
+        <h2>Characters ({{ characters|length }})</h2>
+        <div class="char-cards">
+            {% for char in characters %}
+            <div class="char-card">
+                <h3>{{ char.character_name }}</h3>
+                <p><strong>{{ char.race }}</strong> — Level {{ char.level }} {{ char.class_name }}</p>
+                <p class="player">played by {{ char.player_name }}</p>
+                <a href="/characters/{{ char.id }}" class="btn btn-sm">View Sheet</a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No characters yet. Create one to get started!</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyInvite() {
+    const link = document.getElementById('invite-link').textContent;
+    navigator.clipboard.writeText(link).then(() => {
+        alert('Invite link copied!');
+    });
+}
+</script>
+{% endblock %}

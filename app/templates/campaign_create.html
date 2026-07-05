@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Create Campaign — CritForge{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <h1>🎲 Start a New Campaign</h1>
+    <p class="subtitle">Create your world. Share the link. Start playing.</p>
+
+    <form method="POST" action="/campaigns/create" class="campaign-form">
+        <div class="form-group">
+            <label for="name">Campaign Name</label>
+            <input type="text" id="name" name="name" required
+                   placeholder="The Quest for the Lost Tomb..."
+                   maxlength="100">
+        </div>
+
+        <div class="form-group">
+            <label for="dm_name">Your Name (DM)</label>
+            <input type="text" id="dm_name" name="dm_name" required
+                   placeholder="Dungeon Master"
+                   maxlength="50">
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg">Create Campaign</button>
+    </form>
+</div>
+{% endblock %}

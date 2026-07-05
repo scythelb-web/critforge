@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}CritForge — Your D&D Table, Your Rules{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h1>🎲 Your D&D Table, Your Rules</h1>
+    <p class="hero-sub">
+        Custom classes, custom races, built-in video chat, and a full virtual tabletop.
+        No Discord required. No missing classes. Just you and your party.
+    </p>
+    <div class="hero-actions">
+        <a href="/campaigns/create" class="btn btn-primary btn-lg">Start a Campaign</a>
+    </div>
+</section>
+
+<section class="features">
+    <div class="feature">
+        <h3>🧙 Full Homebrew</h3>
+        <p>Necromancer? Minotaur? Gunslinger? Any class, any race, any stats. No restrictions.</p>
+    </div>
+    <div class="feature">
+        <h3>🎥 Built-in Video Chat</h3>
+        <p>See and hear your party right in the browser. No Discord, no Zoom, no extra apps.</p>
+    </div>
+    <div class="feature">
+        <h3>🗺️ Live Map Table</h3>
+        <p>Upload maps, place tokens, move in real-time. Everyone sees the action as it happens.</p>
+    </div>
+    <div class="feature">
+        <h3>🎯 Dice Roller</h3>
+        <p>Roll any dice combination. Results broadcast to the whole party instantly.</p>
+    </div>
+</section>
+
+<section class="how-it-works">
+    <h2>How It Works</h2>
+    <div class="steps">
+        <div class="step">
+            <span class="step-num">1</span>
+            <h4>DM Creates Campaign</h4>
+            <p>Name your campaign, get an invite link. Takes 10 seconds.</p>
+        </div>
+        <div class="step">
+            <span class="step-num">2</span>
+            <h4>Players Build Characters</h4>
+            <p>Full homebrew support. Any class, any race, any stats. Your rules.</p>
+        </div>
+        <div class="step">
+            <span class="step-num">3</span>
+            <h4>Play at the Table</h4>
+            <p>Video chat, map with tokens, dice roller, and chat — all in one tab.</p>
+        </div>
+    </div>
+</section>
+{% endblock %}

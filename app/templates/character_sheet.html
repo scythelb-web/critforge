@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}{{ character.character_name }} — CritForge{% endblock %}
+
+{% block content %}
+<div class="char-sheet">
+    <div class="sheet-header">
+        <h1>{{ character.character_name }}</h1>
+        <p class="sheet-identity">
+            Level {{ character.level }} {{ character.race }} {{ character.class_name }}
+            &bull; {{ character.alignment }}
+            {% if character.background %}&bull; {{ character.background }}{% endif %}
+        </p>
+        <p class="sheet-player">played by {{ character.player_name }}</p>
+        <div class="sheet-actions">
+            <a href="/characters/{{ character.id }}/edit" class="btn btn-sm">✏️ Edit</a>
+            {% if campaign %}
+            <a href="/game/{{ campaign.invite_code }}" class="btn btn-sm btn-success">🎲 Game Table</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="sheet-grid">
+        <!-- Stats Column -->
+        <div class="sheet-col stats-col">
+            <h3>Ability Scores</h3>
+            <div class="stats-list">
+                {% for name, score in stats.items() %}
+                <div class="stat-row">
+                    <span class="stat-label">{{ name }}</span>
+                    <span class="stat-score">{{ score }}</span>
+                    <span class="stat-mod-val {% if mod(score) >= 0 %}positive{% else %}negative{% endif %}">
+                        {{ '%+d' % mod(score) }}
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+
+            <h3>Combat</h3>
+            <div class="combat-stats">
+                <div class="combat-stat"><span>AC</span><strong>{{ character.ac }}</strong></div>
+                <div class="combat-stat"><span>HP</span><strong>{{ character.hp_current }}/{{ character.hp_max }}</strong></div>
+                <div class="combat-stat"><span>Init</span><strong>{{ '%+d' % character.initiative_bonus }}</strong></div>
+                <div class="combat-stat"><span>Speed</span><strong>{{ character.speed }} ft</strong></div>
+            </div>
+        </div>
+
+        <!-- Details Column -->
+        <div class="sheet-col details-col">
+            {% if proficiencies %}
+            <h3>Proficiencies</h3>
+            <ul class="tag-list">
+                {% for p in proficiencies %}
+                <li class="tag">{{ p }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+            {% if features %}
+            <h3>Features & Traits</h3>
+            <ul class="feature-list">
+                {% for f in features %}
+                <li>{{ f }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+            {% if spells %}
+            <h3>Spells</h3>
+            <ul class="tag-list spell-list">
+                {% for s in spells %}
+                <li class="tag spell-tag">{{ s }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+            {% if equipment %}
+            <h3>Equipment</h3>
+            <ul class="equip-list">
+                {% for e in equipment %}
+                <li>{{ e }}</li>
+                {% endfor %}
+            </ul>
+            {% endif %}
+
+            {% if character.notes %}
+            <h3>Notes</h3>
+            <p class="notes-text">{{ character.notes }}</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

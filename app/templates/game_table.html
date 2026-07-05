@@ -1,0 +1,1131 @@
+{% extends "base.html" %}
+{% block title %}Game Table — {{ campaign.name }} — CritForge{% endblock %}
+
+{% block head %}
+<style>
+:root {
+    --bg: #0a0a14;
+    --surface: #12122a;
+    --dm-gold: #f0c040;
+    --dm-red: #e94560;
+    --player-blue: #4fc3f7;
+    --player-green: #66bb6a;
+    --player-purple: #ab47bc;
+    --player-orange: #ffa726;
+    --player-teal: #26c6da;
+    --player-pink: #ec407a;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    margin: 0; overflow: hidden; background: var(--bg);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: #e0e0e0; user-select: none;
+}
+main { padding: 0; max-width: none; }
+footer, .top-nav { display: none; }
+
+/* ═══ MAIN TABLE LAYOUT ═══════════════════════════════════════ */
+#table-room {
+    display: grid;
+    grid-template-rows: 70px 1fr 56px;
+    grid-template-columns: 80px 1fr 80px;
+    grid-template-areas:
+        "top-seats   dm-seat     top-seats"
+        "left-seats  map-area    right-seats"
+        "bot-left    bottom-bar  bot-right";
+    height: 100vh; width: 100vw;
+    gap: 0;
+    background: radial-gradient(ellipse at center, #1a1a2e 0%, #0a0a14 70%);
+}
+
+/* ═══ MAP — THE CENTER OF THE TABLE ══════════════════════════ */
+#map-area {
+    grid-area: map-area;
+    position: relative;
+    border: 3px solid #2a2a3a;
+    border-radius: 12px;
+    margin: 8px;
+    overflow: hidden;
+    background: #0f0f1a;
+    box-shadow: 0 0 40px rgba(0,0,0,0.5), inset 0 0 60px rgba(0,0,0,0.3);
+}
+#map-canvas {
+    position: absolute; top: 0; left: 0;
+    cursor: grab;
+}
+#map-canvas:active { cursor: grabbing; }
+
+/* Map label */
+.map-label {
+    position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.6); color: #888; font-size: 10px;
+    padding: 2px 10px; border-radius: 10px; pointer-events: none;
+    text-transform: uppercase; letter-spacing: 2px;
+}
+
+/* ═══ DM SEAT — HEAD OF THE TABLE ════════════════════════════ */
+#dm-seat {
+    grid-area: dm-seat;
+    display: flex; align-items: center; justify-content: center;
+    gap: 10px; padding: 8px 24px;
+    background: linear-gradient(180deg, #1a1a2e 0%, #0f0f1a 100%);
+    border-bottom: 2px solid var(--dm-gold);
+}
+#dm-seat .seat-avatar {
+    width: 48px; height: 48px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--dm-gold), #b8860b);
+    border: 3px solid var(--dm-gold);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: bold; color: #1a1a2e;
+    box-shadow: 0 0 20px rgba(240,192,64,0.3);
+}
+#dm-seat .seat-info { text-align: left; }
+#dm-seat .seat-name { font-weight: bold; font-size: 14px; color: var(--dm-gold); }
+#dm-seat .seat-role { font-size: 10px; color: #b8860b; text-transform: uppercase; letter-spacing: 2px; }
+#dm-seat .dm-crown { font-size: 18px; }
+
+/* ═══ PLAYER SEATS ═══════════════════════════════════════════ */
+.seat-area {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+    gap: 6px; padding: 6px;
+}
+#top-seats    { grid-area: top-seats;    flex-direction: row; border-bottom: 1px solid #1a1a2e; }
+#left-seats   { grid-area: left-seats;   flex-direction: column; border-right: 1px solid #1a1a2e; }
+#right-seats  { grid-area: right-seats;  flex-direction: column; border-left: 1px solid #1a1a2e; }
+
+.player-seat {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 2px; padding: 4px 8px;
+    border-radius: 8px; transition: all 0.2s;
+    min-width: 64px;
+}
+.player-seat:hover { background: rgba(255,255,255,0.03); }
+.player-seat .seat-avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: bold; color: white;
+    border: 2px solid rgba(255,255,255,0.2);
+}
+.player-seat .seat-name {
+    font-size: 10px; color: #aaa; text-align: center;
+    max-width: 70px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.player-seat .seat-char {
+    font-size: 9px; color: #666;
+    max-width: 70px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.player-seat.you { background: rgba(255,255,255,0.05); }
+.player-seat.you .seat-name { color: white; }
+
+/* Player seat colors */
+.seat-0 .seat-avatar { background: var(--player-blue); }
+.seat-1 .seat-avatar { background: var(--player-green); }
+.seat-2 .seat-avatar { background: var(--player-purple); }
+.seat-3 .seat-avatar { background: var(--player-orange); }
+.seat-4 .seat-avatar { background: var(--player-teal); }
+.seat-5 .seat-avatar { background: var(--player-pink); }
+
+/* ═══ BOTTOM BAR ═════════════════════════════════════════════ */
+#bottom-bar {
+    grid-area: bottom-bar;
+    display: flex; align-items: center; justify-content: center;
+    gap: 12px; padding: 8px 16px;
+    background: linear-gradient(0deg, #0f0f1a 0%, #1a1a2e 100%);
+    border-top: 2px solid #2a2a3a;
+}
+
+/* Dice roller in bottom bar */
+#dice-buttons { display: flex; gap: 4px; }
+#dice-buttons button {
+    background: #16213e; color: #ccc; border: 1px solid #2a2a3a;
+    padding: 6px 10px; border-radius: 6px; cursor: pointer;
+    font-size: 12px; font-weight: bold; transition: all 0.15s;
+}
+#dice-buttons button:hover { background: var(--dm-red); border-color: var(--dm-red); color: white; }
+#dice-buttons button.d20-btn {
+    background: #1a1a2e; border-color: var(--dm-gold); color: var(--dm-gold);
+    font-size: 14px; padding: 6px 14px;
+}
+#dice-result {
+    font-size: 22px; font-weight: bold; color: var(--dm-gold);
+    min-width: 50px; text-align: center;
+    font-family: 'Courier New', monospace;
+}
+#roller-name-input {
+    background: #16213e; border: 1px solid #2a2a3a; color: #ccc;
+    padding: 5px 8px; border-radius: 4px; font-size: 11px; width: 90px;
+}
+
+/* Chat toggle button */
+#chat-toggle {
+    background: #16213e; color: #888; border: 1px solid #2a2a3a;
+    padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px;
+}
+#chat-toggle:hover { background: #1a1a3e; color: white; }
+#chat-toggle.has-unread { border-color: var(--dm-red); color: var(--dm-red); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+
+/* ═══ CHAT OVERLAY ══════════════════════════════════════════ */
+#chat-overlay {
+    position: fixed; bottom: 64px; right: 12px;
+    width: 300px; max-height: 350px;
+    background: #12122a; border: 2px solid #2a2a3a; border-radius: 12px;
+    display: none; flex-direction: column; z-index: 100;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+#chat-overlay.open { display: flex; }
+#chat-header {
+    padding: 8px 12px; background: #1a1a2e; border-bottom: 1px solid #2a2a3a;
+    font-size: 12px; font-weight: bold; color: #888;
+    display: flex; justify-content: space-between;
+}
+#chat-close { cursor: pointer; color: #666; font-size: 16px; }
+#chat-messages {
+    flex: 1; overflow-y: auto; padding: 8px;
+    min-height: 150px; max-height: 250px;
+}
+.chat-msg { margin-bottom: 6px; font-size: 11px; line-height: 1.4; }
+.chat-msg .sender { font-weight: bold; color: var(--dm-red); }
+.chat-msg.system { color: #666; font-style: italic; }
+.chat-msg.roll { color: var(--dm-gold); }
+.chat-msg.dm { color: var(--dm-gold); font-weight: bold; }
+#chat-input-row { display: flex; padding: 6px; gap: 4px; border-top: 1px solid #2a2a3a; }
+#chat-input { flex: 1; background: #0f0f1a; border: 1px solid #2a2a3a; color: #ccc; padding: 6px 8px; border-radius: 4px; font-size: 11px; }
+#chat-send { background: var(--dm-red); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+
+/* ═══ DM PANEL OVERLAY ══════════════════════════════════════ */
+#dm-panel {
+    position: fixed; top: 80px; left: 12px;
+    background: #12122a; border: 2px solid var(--dm-gold); border-radius: 12px;
+    padding: 10px; z-index: 100;
+    display: none; flex-direction: column; gap: 6px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+#dm-panel.open { display: flex; }
+#dm-panel .dm-label {
+    color: var(--dm-gold); font-size: 10px; font-weight: bold;
+    text-transform: uppercase; letter-spacing: 2px; text-align: center;
+}
+#dm-panel button {
+    background: #16213e; color: #ccc; border: 1px solid #2a2a3a;
+    padding: 7px 14px; border-radius: 6px; cursor: pointer;
+    font-size: 12px; text-align: left; white-space: nowrap;
+    transition: all 0.15s;
+}
+#dm-panel button:hover { background: var(--dm-red); border-color: var(--dm-red); color: white; }
+#dm-panel hr { border: none; border-top: 1px solid #2a2a3a; margin: 2px 0; }
+#map-url-input {
+    background: #0f0f1a; border: 1px solid #2a2a3a; color: #ccc;
+    padding: 5px 8px; border-radius: 4px; font-size: 11px; width: 140px;
+}
+#map-url-row { display: flex; gap: 4px; }
+
+/* ═══ TOOLBAR (always visible, small) ═══════════════════════ */
+#toolbar {
+    position: absolute; top: 8px; right: 8px;
+    display: flex; gap: 4px; z-index: 10;
+}
+#toolbar button {
+    background: rgba(0,0,0,0.5); color: #888; border: 1px solid #333;
+    padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;
+    backdrop-filter: blur(4px);
+}
+#toolbar button:hover { color: white; border-color: #666; }
+
+/* ═══ BOTTOM CORNER SEATS ═══════════════════════════════════ */
+#bot-left, #bot-right {
+    display: flex; align-items: center; justify-content: center;
+    padding: 4px; border-top: 1px solid #1a1a2e;
+}
+#bot-left  { grid-area: bot-left;  border-right: 1px solid #1a1a2e; }
+#bot-right { grid-area: bot-right; border-left: 1px solid #1a1a2e; }
+
+/* ═══ EMPTY SEAT ═══════════════════════════════════════════ */
+.empty-seat {
+    width: 36px; height: 36px; border-radius: 50%;
+    border: 2px dashed #1a1a2e;
+    display: flex; align-items: center; justify-content: center;
+    color: #1a1a2e; font-size: 16px;
+}
+
+/* ═══ INFO PANEL (character quick view) ═══════════════════ */
+#info-panel {
+    position: absolute; top: 8px; left: 8px;
+    background: rgba(0,0,0,0.5); border: 1px solid #333;
+    border-radius: 8px; padding: 8px 12px; z-index: 10;
+    backdrop-filter: blur(4px); font-size: 11px; color: #888;
+    display: none;
+}
+#info-panel.has-info { display: block; }
+#info-panel strong { color: var(--dm-gold); }
+
+/* ═══ RESPONSIVE ═══════════════════════════════════════════ */
+@media (max-width: 900px) {
+    #table-room {
+        grid-template-rows: 56px 1fr 48px;
+        grid-template-columns: 60px 1fr 60px;
+    }
+    #dm-seat .seat-avatar { width: 36px; height: 36px; font-size: 16px; }
+    #dice-buttons button { padding: 4px 8px; font-size: 11px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="table-room">
+    <!-- ═══ DM SEAT — Head of the table ═══ -->
+    <div id="dm-seat">
+        <div class="seat-avatar">👑</div>
+        <div class="seat-info">
+            <div class="seat-name">{{ campaign.dm_name }}</div>
+            <div class="seat-role">Dungeon Master</div>
+        </div>
+        <span class="dm-crown">⚜️</span>
+    </div>
+
+    <!-- ═══ TOP PLAYER SEATS ═══ -->
+    <div id="top-seats" class="seat-area"></div>
+
+    <!-- ═══ LEFT PLAYER SEATS ═══ -->
+    <div id="left-seats" class="seat-area"></div>
+
+    <!-- ═══ RIGHT PLAYER SEATS ═══ -->
+    <div id="right-seats" class="seat-area"></div>
+
+    <!-- ═══ MAP — THE TABLE ═══ -->
+    <div id="map-area">
+        <canvas id="map-canvas"></canvas>
+        <div class="map-label">{{ campaign.name }}</div>
+
+        <!-- Info panel (shows selected token info) -->
+        <div id="info-panel"></div>
+
+        <!-- Toolbar -->
+        <div id="toolbar">
+            <button onclick="toggleGrid()" title="Toggle Grid (G)">📐</button>
+            <button onclick="resetView()" title="Reset View">🔍</button>
+        </div>
+    </div>
+
+    <!-- ═══ BOTTOM CORNERS ═══ -->
+    <div id="bot-left" class="seat-area"></div>
+    <div id="bot-right" class="seat-area"></div>
+
+    <!-- ═══ BOTTOM BAR — Dice + Chat ═══ -->
+    <div id="bottom-bar">
+        <button id="dm-toggle" onclick="toggleDMPanel()" style="display:none; background:#16213e; color:var(--dm-gold); border:1px solid var(--dm-gold); padding:6px 10px; border-radius:6px; cursor:pointer; font-size:11px;">👑 DM</button>
+        <input type="text" id="roller-name-input" placeholder="Name" value="{% if characters %}{{ characters[0].player_name }}{% endif %}">
+        <div id="dice-buttons">
+            <button class="d20-btn" onclick="rollDice('1d20')" title="The big one">d20</button>
+            <button onclick="rollDice('1d12')">d12</button>
+            <button onclick="rollDice('1d10')">d10</button>
+            <button onclick="rollDice('1d8')">d8</button>
+            <button onclick="rollDice('1d6')">d6</button>
+            <button onclick="rollDice('1d4')">d4</button>
+            <button onclick="rollDice('2d6')">2d6</button>
+        </div>
+        <span id="dice-result">—</span>
+        <button id="chat-toggle" onclick="toggleChat()">💬 Chat</button>
+    </div>
+</div>
+
+<!-- ═══ DM PANEL (floating) ═══ -->
+<div id="dm-panel">
+    <div class="dm-label">👑 DM CONTROLS</div>
+    <button onclick="addToken()">➕ Add Token</button>
+    <button onclick="removeSelectedToken()">🗑 Remove Selected</button>
+    <hr>
+    <div class="dm-label" style="font-size:9px;">MAP GENERATOR</div>
+    <button onclick="generateMap('dungeon')">🏰 Dungeon</button>
+    <button onclick="generateMap('town')">🏘️ Town</button>
+    <button onclick="generateMap('forest')">🌲 Forest</button>
+    <button onclick="generateMap('field')">🌾 Open Field</button>
+    <hr>
+    <button onclick="resetMap()">🗺 Clear Map</button>
+</div>
+
+<!-- ═══ CHAT OVERLAY ═══ -->
+<div id="chat-overlay">
+    <div id="chat-header">
+        <span>💬 Party Chat</span>
+        <span id="chat-close" onclick="toggleChat()">✕</span>
+    </div>
+    <div id="chat-messages"></div>
+    <div id="chat-input-row">
+        <input type="text" id="chat-input" placeholder="Say something..."
+               onkeydown="if(event.key==='Enter')sendChat()">
+        <button id="chat-send" onclick="sendChat()">Send</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ═══════════════════════════════════════════════════════════════
+// CRITFORGE GAME TABLE — Table-centric layout
+// ═══════════════════════════════════════════════════════════════
+
+const INVITE_CODE = "{{ campaign.invite_code }}";
+const CAMPAIGN_ID = {{ campaign.id }};
+const DM_NAME = "{{ campaign.dm_name|e }}";
+
+// ── State ────────────────────────────────────────────────────
+let myName = document.getElementById('roller-name-input').value || 'Player';
+let iAmDM = false;
+let ws = null;
+let tokens = [];
+let mapImage = null;
+let showGrid = true;
+let selectedToken = null;
+let isDragging = false;
+let dragOffset = { x: 0, y: 0 };
+let viewOffset = { x: 0, y: 0 };
+let zoom = 1;
+let unreadChat = 0;
+let chatOpen = false;
+
+// Character data from server
+const charData = {
+    {% for char in characters %}
+    "{{ char.player_name|e }}": { id: {{ char.id }}, name: "{{ char.character_name|e }}", race: "{{ char.race|e }}", cls: "{{ char.class_name|e }}", level: {{ char.level }} },
+    {% endfor %}
+};
+
+// ── Canvas ───────────────────────────────────────────────────
+const canvas = document.getElementById('map-canvas');
+const ctx = canvas.getContext('2d');
+const mapArea = document.getElementById('map-area');
+
+function resizeCanvas() {
+    canvas.width = mapArea.clientWidth;
+    canvas.height = mapArea.clientHeight;
+    if (dungeonCanvas) { dungeonCanvas.width = canvas.width; dungeonCanvas.height = canvas.height; }
+    draw();
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+{% if tokens %}
+tokens = [
+    {% for t in tokens %}
+    { id: {{ t.id }}, character_id: {{ t.character_id or 'null' }}, name: "{{ t.name|e }}", x: {{ t.x }}, y: {{ t.y }} },
+    {% endfor %}
+];
+{% endif %}
+{% if map_image %}
+mapImage = "{{ map_image.image_url }}";
+{% endif %}
+
+// ── SEAT ARRANGEMENT ────────────────────────────────────────
+const playerColors = ['seat-0','seat-1','seat-2','seat-3','seat-4','seat-5'];
+const seatZones = [
+    document.getElementById('top-seats'),
+    document.getElementById('top-seats'),
+    document.getElementById('left-seats'),
+    document.getElementById('right-seats'),
+    document.getElementById('bot-left'),
+    document.getElementById('bot-right'),
+];
+
+function renderSeats() {
+    // Clear all zones
+    seatZones.forEach(z => { z.innerHTML = ''; });
+
+    const characters = [
+        {% for char in characters %}
+        { player: "{{ char.player_name|e }}", name: "{{ char.character_name|e }}", race: "{{ char.race|e }}", cls: "{{ char.class_name|e }}", level: {{ char.level }} },
+        {% endfor %}
+    ];
+
+    if (characters.length === 0) {
+        // Show empty seats
+        document.getElementById('left-seats').innerHTML = '<div class="empty-seat">+</div>';
+        document.getElementById('right-seats').innerHTML = '<div class="empty-seat">+</div>';
+        return;
+    }
+
+    // Spread seats around the table
+    const zones = [
+        document.getElementById('top-seats'),
+        document.getElementById('left-seats'),
+        document.getElementById('right-seats'),
+        document.getElementById('bot-left'),
+        document.getElementById('bot-right'),
+    ];
+
+    characters.forEach((char, i) => {
+        const zoneIdx = i % zones.length;
+        const seat = document.createElement('div');
+        seat.className = `player-seat ${playerColors[i % playerColors.length]}`;
+        if (char.player === myName) seat.classList.add('you');
+
+        const initial = char.name.charAt(0).toUpperCase();
+        seat.innerHTML = `
+            <div class="seat-avatar">${initial}</div>
+            <div class="seat-name">${char.player === myName ? 'You' : char.player}</div>
+            <div class="seat-char">Lv${char.level} ${char.race}</div>
+        `;
+        seat.onclick = () => {
+            if (charData[char.player]) viewChar(charData[char.player].id);
+        };
+        zones[zoneIdx].appendChild(seat);
+    });
+}
+renderSeats();
+
+// ── WebSocket ────────────────────────────────────────────────
+function connectWS() {
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${protocol}//${location.host}/game/${INVITE_CODE}/ws`);
+
+    ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'auth', name: myName, is_dm: iAmDM }));
+    };
+
+    ws.onclose = () => {
+        addChat('system', 'Reconnecting...');
+        setTimeout(connectWS, 2000);
+    };
+
+    ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+
+        if (msg.type === 'state') {
+            if (msg.tokens) tokens = msg.tokens;
+            if (msg.map_image) mapImage = msg.map_image.image_url;
+            if (msg.you_are_dm !== undefined) {
+                iAmDM = msg.you_are_dm;
+                myName = msg.your_name || myName;
+                updateRoleDisplay();
+            }
+            draw();
+        }
+        else if (msg.type === 'error') {
+            addChat('system', `⚠ ${msg.message}`);
+        }
+        else if (msg.type === 'token_move') {
+            const t = tokens.find(tk => tk.id === msg.token_id);
+            if (t) { t.x = msg.x; t.y = msg.y; draw(); }
+        }
+        else if (msg.type === 'token_add') {
+            tokens.push(msg.token); draw();
+        }
+        else if (msg.type === 'token_remove') {
+            tokens = tokens.filter(tk => tk.id !== msg.token_id);
+            if (selectedToken && selectedToken.id === msg.token_id) { selectedToken = null; hideInfo(); }
+            draw();
+        }
+        else if (msg.type === 'dice_roll') {
+            const rollsStr = msg.rolls.length ? ` [${msg.rolls.join(', ')}]` : '';
+            addChat('roll', `${msg.roller}: ${msg.expression} = <b>${msg.result}</b>${rollsStr}`);
+            document.getElementById('dice-result').textContent = msg.result;
+        }
+        else if (msg.type === 'chat') {
+            const cssClass = msg.sender === DM_NAME ? 'dm' : 'user';
+            addChat(cssClass, msg.sender, msg.message);
+        }
+        else if (msg.type === 'map_set') {
+            mapImage = msg.image_url; loadBg(); draw();
+        }
+        else if (msg.type === 'map_reset') {
+            mapImage = null; loadBg(); draw();
+        }
+    };
+}
+
+function updateRoleDisplay() {
+    const dmToggle = document.getElementById('dm-toggle');
+    const dmPanel = document.getElementById('dm-panel');
+    if (iAmDM) {
+        dmToggle.style.display = 'block';
+        dmPanel.classList.add('open');
+    }
+}
+connectWS();
+
+// ── Drawing ──────────────────────────────────────────────────
+const bgImage = new Image();
+function loadBg() { if (mapImage) bgImage.src = mapImage; else bgImage.src = ''; }
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Dark wood table feel
+    const grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, canvas.width*0.1, canvas.width/2, canvas.height/2, canvas.width*0.8);
+    grad.addColorStop(0, '#1a1a2e');
+    grad.addColorStop(1, '#0a0a14');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Map image
+    if (mapImage && bgImage.complete && bgImage.naturalWidth > 0) {
+        ctx.save();
+        ctx.translate(viewOffset.x, viewOffset.y);
+        ctx.scale(zoom, zoom);
+        // Draw with shadow for depth
+        ctx.shadowColor = 'rgba(0,0,0,0.5)';
+        ctx.shadowBlur = 20;
+        ctx.drawImage(bgImage, 0, 0, canvas.width / zoom, canvas.height / zoom);
+        ctx.shadowBlur = 0;
+        ctx.restore();
+    }
+
+    // Grid
+    if (showGrid) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+        ctx.lineWidth = 1;
+        const gs = 50 * zoom;
+        const sx = viewOffset.x % gs;
+        const sy = viewOffset.y % gs;
+        for (let x = sx; x < canvas.width; x += gs) {
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+        }
+        for (let y = sy; y < canvas.height; y += gs) {
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+        }
+    }
+
+    // Tokens
+    tokens.forEach(t => {
+        const sx = t.x * zoom + viewOffset.x;
+        const sy = t.y * zoom + viewOffset.y;
+        const r = 22 * zoom;
+
+        // Shadow
+        ctx.shadowColor = 'rgba(0,0,0,0.6)';
+        ctx.shadowBlur = 6 * zoom;
+
+        // Selection glow
+        if (selectedToken && selectedToken.id === t.id) {
+            ctx.strokeStyle = '#e94560';
+            ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.arc(sx, sy, r + 5, 0, Math.PI * 2); ctx.stroke();
+        }
+
+        // Token body - NPCs red, characters blue
+        const isNPC = !t.character_id;
+        ctx.fillStyle = isNPC ? '#e94560' : '#4fc3f7';
+        ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#1a1a2e';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Initial
+        ctx.fillStyle = 'white';
+        ctx.font = `bold ${14 * zoom}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(t.name.charAt(0).toUpperCase(), sx, sy);
+
+        // Name
+        ctx.font = `${10 * zoom}px sans-serif`;
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText(t.name, sx, sy - r - 6 * zoom);
+    });
+}
+
+loadBg(); draw();
+
+// ── Mouse ────────────────────────────────────────────────────
+canvas.addEventListener('mousedown', (e) => {
+    const mx = e.offsetX, my = e.offsetY;
+    for (let i = tokens.length - 1; i >= 0; i--) {
+        const t = tokens[i];
+        const sx = t.x * zoom + viewOffset.x, sy = t.y * zoom + viewOffset.y;
+        if (Math.hypot(mx - sx, my - sy) <= 22 * zoom + 4) {
+            selectedToken = t;
+            isDragging = true;
+            dragOffset = { x: sx - mx, y: sy - my };
+            showInfo(t);
+            draw();
+            return;
+        }
+    }
+    selectedToken = null;
+    hideInfo();
+    draw();
+});
+
+canvas.addEventListener('mousemove', (e) => {
+    if (isDragging && selectedToken) {
+        selectedToken.x = Math.round((e.offsetX + dragOffset.x - viewOffset.x) / zoom);
+        selectedToken.y = Math.round((e.offsetY + dragOffset.y - viewOffset.y) / zoom);
+        draw();
+    }
+});
+
+canvas.addEventListener('mouseup', () => {
+    if (isDragging && selectedToken && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'token_move', token_id: selectedToken.id, x: selectedToken.x, y: selectedToken.y, sender: myName }));
+    }
+    isDragging = false;
+});
+
+canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    zoom = Math.max(0.2, Math.min(3, zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
+    draw();
+});
+
+// Keyboard
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Delete' && selectedToken && iAmDM) removeSelectedToken();
+    if (e.key === 'g' && !e.ctrlKey) { showGrid = !showGrid; draw(); }
+    if (e.key === 'd' && e.ctrlKey && iAmDM) { e.preventDefault(); generateMap('dungeon'); }
+    if (e.key === 'Escape') { selectedToken = null; hideInfo(); draw(); }
+});
+
+function showInfo(t) {
+    const panel = document.getElementById('info-panel');
+    const isNPC = !t.character_id;
+    panel.className = 'has-info';
+    panel.innerHTML = isNPC
+        ? `<strong>${t.name}</strong><br>NPC — DM controlled`
+        : `<strong>${t.name}</strong><br>Click and drag to move`;
+}
+function hideInfo() { document.getElementById('info-panel').className = ''; }
+
+// ── DM Actions ───────────────────────────────────────────────
+function toggleDMPanel() {
+    document.getElementById('dm-panel').classList.toggle('open');
+}
+function addToken() {
+    if (!iAmDM) return;
+    const name = prompt('Token name:', 'Goblin');
+    if (!name || !ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: 'token_add', name }));
+}
+function removeSelectedToken() {
+    if (!iAmDM || !selectedToken) return;
+    if (!confirm(`Remove "${selectedToken.name}"?`)) return;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'token_remove', token_id: selectedToken.id }));
+    }
+}
+function setMapUrl() {
+    if (!iAmDM) return;
+    const url = document.getElementById('map-url-input').value.trim();
+    if (!url || !ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: 'map_set', image_url: url }));
+}
+function resetMap() {
+    if (!iAmDM || !confirm('Clear the map?')) return;
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'map_reset' }));
+}
+function toggleGrid() { showGrid = !showGrid; draw(); }
+function resetView() { viewOffset = { x: 0, y: 0 }; zoom = 1; draw(); }
+
+// ── Map Generators (Dungeon, Town, Forest, Open Field) ──────
+let dungeonCanvas = null;
+
+function generateMap(type) {
+    if (!iAmDM) return;
+    const w = canvas.width, h = canvas.height;
+    if (!dungeonCanvas) { dungeonCanvas = document.createElement('canvas'); dungeonCanvas.width = w; dungeonCanvas.height = h; }
+    const dctx = dungeonCanvas.getContext('2d');
+
+    if (type === 'dungeon') generateDungeonMap(dctx, w, h);
+    else if (type === 'town') generateTownMap(dctx, w, h);
+    else if (type === 'forest') generateForestMap(dctx, w, h);
+    else if (type === 'field') generateFieldMap(dctx, w, h);
+
+    const names = { dungeon: '🏰 Dungeon', town: '🏘️ Town', forest: '🌲 Forest', field: '🌾 Open Field' };
+    dungeonCanvas.toBlob((blob) => {
+        const url = URL.createObjectURL(blob);
+        mapImage = url; loadBg(); draw();
+        addChat('system', `${names[type]} generated!`);
+        if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'map_set', image_url: url }));
+    }, 'image/png');
+}
+
+// ── DUNGEON (BSP rooms + corridors) ──────────────────────────
+function generateDungeonMap(dctx, w, h) {
+    const cs = 28;
+    class Rect { constructor(x,y,w,h) { this.x=x; this.y=y; this.w=w; this.h=h; } }
+    class Node {
+        constructor(rect) { this.rect=rect; this.left=null; this.right=null; this.room=null; this.hall=null; }
+        split() {
+            if (this.left || this.right) return false;
+            const r = this.rect;
+            const splitH = r.w > r.h ? Math.random() > 0.3 : r.h > r.w ? Math.random() < 0.7 : Math.random() > 0.5;
+            const maxSize = (splitH ? r.w : r.h) - 7;
+            if (maxSize <= 7) return false;
+            const pos = 7 + Math.floor(Math.random() * (maxSize - 7));
+            if (splitH) {
+                this.left = new Node(new Rect(r.x, r.y, pos, r.h));
+                this.right = new Node(new Rect(r.x + pos, r.y, r.w - pos, r.h));
+            } else {
+                this.left = new Node(new Rect(r.x, r.y, r.w, pos));
+                this.right = new Node(new Rect(r.x, r.y + pos, r.w, r.h - pos));
+            }
+            return true;
+        }
+        createRooms() {
+            if (this.left || this.right) {
+                if (this.left) this.left.createRooms();
+                if (this.right) this.right.createRooms();
+                if (this.left && this.right) this.hall = _connectRooms(this.left.getRoom(), this.right.getRoom());
+            } else {
+                const r = this.rect;
+                const rw = 3 + Math.floor(Math.random() * Math.max(1, r.w - 4));
+                const rh = 3 + Math.floor(Math.random() * Math.max(1, r.h - 4));
+                const rx = r.x + Math.floor(Math.random() * Math.max(1, r.w - rw));
+                const ry = r.y + Math.floor(Math.random() * Math.max(1, r.h - rh));
+                this.room = new Rect(rx, ry, rw, rh);
+            }
+        }
+        getRoom() {
+            if (this.room) return this.room;
+            const lr = this.left ? this.left.getRoom() : null;
+            const rr = this.right ? this.right.getRoom() : null;
+            return lr || rr;
+        }
+    }
+    function _connectRooms(a, b) {
+        if (!a || !b) return null;
+        const ax = Math.floor(a.x + a.w / 2), ay = Math.floor(a.y + a.h / 2);
+        const bx = Math.floor(b.x + b.w / 2), by = Math.floor(b.y + b.h / 2);
+        return Math.random() > 0.5
+            ? { x1: ax, y1: ay, x2: bx, y2: ay, x3: bx, y3: by }
+            : { x1: ax, y1: ay, x2: ax, y2: by, x3: bx, y3: by };
+    }
+
+    const cols = Math.floor(w / cs), rows = Math.floor(h / cs);
+    const root = new Node(new Rect(1, 1, cols - 2, rows - 2));
+    const leaves = [root];
+    let didSplit = true;
+    while (didSplit) {
+        didSplit = false;
+        const nl = [];
+        for (const l of leaves) { if (l.split()) { nl.push(l.left, l.right); didSplit = true; } else nl.push(l); }
+        leaves.length = 0; leaves.push(...nl);
+    }
+    root.createRooms();
+
+    dctx.fillStyle = '#0a0a14'; dctx.fillRect(0, 0, w, h);
+
+    function _drawHalls(node) {
+        if (!node) return;
+        if (node.hall) {
+            const h = node.hall;
+            dctx.strokeStyle = '#3a3a4a'; dctx.lineWidth = 3;
+            dctx.beginPath();
+            dctx.moveTo(h.x1 * cs, h.y1 * cs); dctx.lineTo(h.x2 * cs, h.y2 * cs); dctx.lineTo(h.x3 * cs, h.y3 * cs);
+            dctx.stroke();
+        }
+        if (node.left) _drawHalls(node.left);
+        if (node.right) _drawHalls(node.right);
+    }
+    _drawHalls(root);
+
+    function _drawRooms(node) {
+        if (!node) return;
+        if (node.room) {
+            const r = node.room;
+            dctx.fillStyle = '#1a1a2e'; dctx.fillRect(r.x * cs + 2, r.y * cs + 2, r.w * cs - 4, r.h * cs - 4);
+            dctx.strokeStyle = '#4a4a5a'; dctx.lineWidth = 2;
+            dctx.strokeRect(r.x * cs, r.y * cs, r.w * cs, r.h * cs);
+        }
+        if (node.left) _drawRooms(node.left);
+        if (node.right) _drawRooms(node.right);
+    }
+    _drawRooms(root);
+}
+
+// ── TOWN (buildings + roads + central feature) ───────────────
+function generateTownMap(dctx, w, h) {
+    // Grass base
+    const grassGrad = dctx.createLinearGradient(0, 0, 0, h);
+    grassGrad.addColorStop(0, '#4a7c3f'); grassGrad.addColorStop(1, '#3d6b34');
+    dctx.fillStyle = grassGrad; dctx.fillRect(0, 0, w, h);
+
+    const cols = 8, rows = 6;
+    const cellW = w / cols, cellH = h / rows;
+
+    // Draw roads
+    dctx.fillStyle = '#8b7355';
+    for (let r = 0; r < rows; r++) {
+        dctx.fillRect(0, r * cellH + cellH * 0.35, w, cellH * 0.3);
+    }
+    for (let c = 0; c < cols; c++) {
+        dctx.fillRect(c * cellW + cellW * 0.35, 0, cellW * 0.3, h);
+    }
+
+    // Central square (leave open)
+    const cx = Math.floor(cols / 2), cy = Math.floor(rows / 2);
+
+    // Place buildings
+    const buildingColors = ['#8B4513', '#A0522D', '#6B3410', '#7B3F1A', '#9B5523', '#CD853F', '#D2691E'];
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            // Skip central square area
+            if (Math.abs(c - cx) <= 1 && Math.abs(r - cy) <= 1) continue;
+            // Skip some cells randomly for variety
+            if (Math.random() < 0.25) continue;
+
+            const bx = c * cellW + cellW * 0.08;
+            const by = r * cellH + cellH * 0.08;
+            const bw = cellW * 0.6 + Math.random() * cellW * 0.2;
+            const bh = cellH * 0.6 + Math.random() * cellH * 0.2;
+
+            // Building shadow
+            dctx.fillStyle = 'rgba(0,0,0,0.3)';
+            dctx.fillRect(bx + 3, by + 3, bw, bh);
+
+            // Building
+            dctx.fillStyle = buildingColors[Math.floor(Math.random() * buildingColors.length)];
+            dctx.fillRect(bx, by, bw, bh);
+
+            // Roof
+            dctx.fillStyle = '#5C3A1E';
+            dctx.fillRect(bx - 2, by - 3, bw + 4, 6);
+
+            // Windows (small yellow squares)
+            if (bw > 20 && bh > 20) {
+                dctx.fillStyle = '#ffd700';
+                const wx = bx + bw * 0.3, wy = by + bh * 0.2;
+                dctx.fillRect(wx, wy, 4, 4);
+                dctx.fillRect(bx + bw * 0.6, wy, 4, 4);
+            }
+        }
+    }
+
+    // Central feature (well, statue, or market)
+    dctx.fillStyle = '#7a7a6a';
+    dctx.beginPath();
+    dctx.arc(w / 2, h / 2, cellW * 0.4, 0, Math.PI * 2);
+    dctx.fill();
+    dctx.strokeStyle = '#5a5a4a'; dctx.lineWidth = 2; dctx.stroke();
+    dctx.fillStyle = '#4a6a8a';
+    dctx.beginPath();
+    dctx.arc(w / 2, h / 2, cellW * 0.15, 0, Math.PI * 2);
+    dctx.fill();
+
+    // Town walls (partial)
+    dctx.strokeStyle = '#8B7355'; dctx.lineWidth = 6;
+    dctx.strokeRect(10, 10, w - 20, h - 20);
+
+    // Gate openings
+    dctx.fillStyle = '#4a7c3f';
+    dctx.fillRect(w / 2 - 20, 4, 40, 12);
+    dctx.fillRect(w / 2 - 20, h - 16, 40, 12);
+    dctx.fillRect(4, h / 2 - 20, 12, 40);
+    dctx.fillRect(w - 16, h / 2 - 20, 12, 40);
+}
+
+// ── FOREST (dense trees + clearings + winding paths) ─────────
+function generateForestMap(dctx, w, h) {
+    // Dark forest floor
+    const groundGrad = dctx.createRadialGradient(w/2, h/2, 0, w/2, h/2, w*0.7);
+    groundGrad.addColorStop(0, '#2d5a1e');
+    groundGrad.addColorStop(0.6, '#1e3d12');
+    groundGrad.addColorStop(1, '#0f1f08');
+    dctx.fillStyle = groundGrad;
+    dctx.fillRect(0, 0, w, h);
+
+    // Clearings
+    const clearings = [];
+    for (let i = 0; i < 4 + Math.floor(Math.random() * 4); i++) {
+        const cx2 = Math.random() * w * 0.8 + w * 0.1;
+        const cy2 = Math.random() * h * 0.8 + h * 0.1;
+        const cr = 30 + Math.random() * 80;
+        clearings.push({ x: cx2, y: cy2, r: cr });
+
+        const cg = dctx.createRadialGradient(cx2, cy2, cr * 0.3, cx2, cy2, cr);
+        cg.addColorStop(0, '#5a8f3f');
+        cg.addColorStop(0.7, '#3d6b2a');
+        cg.addColorStop(1, '#1e3d12');
+        dctx.fillStyle = cg;
+        dctx.beginPath(); dctx.arc(cx2, cy2, cr, 0, Math.PI * 2); dctx.fill();
+    }
+
+    // Winding path connecting clearings
+    if (clearings.length >= 2) {
+        dctx.strokeStyle = '#6b5240'; dctx.lineWidth = 8;
+        dctx.beginPath();
+        dctx.moveTo(clearings[0].x, clearings[0].y);
+        for (let i = 1; i < clearings.length; i++) {
+            const midX = (clearings[i-1].x + clearings[i].x) / 2 + (Math.random() - 0.5) * 60;
+            const midY = (clearings[i-1].y + clearings[i].y) / 2 + (Math.random() - 0.5) * 60;
+            dctx.quadraticCurveTo(midX, midY, clearings[i].x, clearings[i].y);
+        }
+        dctx.stroke();
+        dctx.strokeStyle = '#8b7355'; dctx.lineWidth = 4;
+        dctx.stroke();
+    }
+
+    // Trees (lots of them, avoiding clearings)
+    function inClearing(x, y) {
+        for (const cl of clearings) {
+            if (Math.hypot(x - cl.x, y - cl.y) < cl.r * 0.6) return true;
+        }
+        return false;
+    }
+
+    for (let i = 0; i < 300; i++) {
+        const tx = Math.random() * w;
+        const ty = Math.random() * h;
+        if (inClearing(tx, ty)) continue;
+
+        const treeSize = 6 + Math.random() * 14;
+
+        // Trunk
+        dctx.fillStyle = '#4a3520';
+        dctx.fillRect(tx - treeSize * 0.15, ty, treeSize * 0.3, treeSize * 0.5);
+
+        // Canopy
+        const canopyColor = ['#1a5c0a', '#226b0f', '#2d7a14', '#1b4d0a'][Math.floor(Math.random() * 4)];
+        dctx.fillStyle = canopyColor;
+        dctx.beginPath();
+        dctx.arc(tx, ty - treeSize * 0.3, treeSize * 0.5, 0, Math.PI * 2);
+        dctx.fill();
+
+        // Second canopy layer for bigger trees
+        if (treeSize > 10) {
+            dctx.fillStyle = canopyColor;
+            dctx.globalAlpha = 0.7;
+            dctx.beginPath();
+            dctx.arc(tx + treeSize * 0.2, ty - treeSize * 0.25, treeSize * 0.35, 0, Math.PI * 2);
+            dctx.fill();
+            dctx.globalAlpha = 1;
+        }
+    }
+}
+
+// ── OPEN FIELD (grassland + scattered features) ──────────────
+function generateFieldMap(dctx, w, h) {
+    // Sky-to-ground gradient
+    const skyGrad = dctx.createLinearGradient(0, 0, 0, h);
+    skyGrad.addColorStop(0, '#87CEEB');
+    skyGrad.addColorStop(0.4, '#B0D4A0');
+    skyGrad.addColorStop(0.6, '#7CB342');
+    skyGrad.addColorStop(1, '#558B2F');
+    dctx.fillStyle = skyGrad; dctx.fillRect(0, 0, w, h);
+
+    // Horizon line
+    const horizon = h * 0.45;
+    dctx.strokeStyle = '#6B8E23'; dctx.lineWidth = 1;
+    dctx.beginPath(); dctx.moveTo(0, horizon); dctx.lineTo(w, horizon); dctx.stroke();
+
+    // Distant hills
+    dctx.fillStyle = '#7CB342';
+    dctx.beginPath(); dctx.moveTo(0, horizon);
+    for (let x = 0; x <= w; x += 40) {
+        dctx.lineTo(x, horizon - 15 - Math.sin(x * 0.008) * 20 - Math.sin(x * 0.02) * 10);
+    }
+    dctx.lineTo(w, h); dctx.lineTo(0, h); dctx.closePath(); dctx.fill();
+
+    // Road/path across the field
+    const roadY = horizon + 20 + Math.random() * (h - horizon - 80);
+    dctx.fillStyle = '#c4a87c';
+    dctx.fillRect(0, roadY - 6, w, 12);
+    dctx.fillStyle = '#d4b88c';
+    dctx.fillRect(0, roadY - 3, w, 6);
+
+    // Scattered rocks
+    for (let i = 0; i < 15; i++) {
+        const rx = Math.random() * w;
+        const ry = horizon + 30 + Math.random() * (h - horizon - 50);
+        if (Math.abs(ry - roadY) < 20) continue;
+        const rs = 4 + Math.random() * 10;
+        dctx.fillStyle = '#888';
+        dctx.beginPath(); dctx.arc(rx, ry, rs, 0, Math.PI * 2); dctx.fill();
+        dctx.fillStyle = '#999';
+        dctx.beginPath(); dctx.arc(rx - rs * 0.2, ry - rs * 0.2, rs * 0.6, 0, Math.PI * 2); dctx.fill();
+    }
+
+    // Scattered bushes
+    for (let i = 0; i < 20; i++) {
+        const bx = Math.random() * w;
+        const by = horizon + 20 + Math.random() * (h - horizon - 40);
+        if (Math.abs(by - roadY) < 16) continue;
+        const bs = 5 + Math.random() * 8;
+        const shade = ['#3d8b37', '#4a9e3f', '#357a2e', '#5aaf4a'][Math.floor(Math.random() * 4)];
+        dctx.fillStyle = shade;
+        dctx.beginPath(); dctx.arc(bx, by, bs, 0, Math.PI * 2); dctx.fill();
+    }
+
+    // Occasional trees (sparse)
+    for (let i = 0; i < 8; i++) {
+        const tx = Math.random() * w;
+        const ty = horizon + 30 + Math.random() * (h - horizon - 60);
+        if (Math.abs(ty - roadY) < 30) continue;
+        dctx.fillStyle = '#5D4037';
+        dctx.fillRect(tx - 2, ty - 6, 4, 18);
+        dctx.fillStyle = '#388E3C';
+        dctx.beginPath(); dctx.arc(tx, ty - 10, 10, 0, Math.PI * 2); dctx.fill();
+        dctx.fillStyle = '#43A047';
+        dctx.beginPath(); dctx.arc(tx + 4, ty - 8, 7, 0, Math.PI * 2); dctx.fill();
+    }
+
+    // Small flowers / grass tufts
+    dctx.fillStyle = '#FFEB3B';
+    for (let i = 0; i < 40; i++) {
+        const fx = Math.random() * w;
+        const fy = horizon + 15 + Math.random() * (h - horizon - 30);
+        if (Math.abs(fy - roadY) < 12) continue;
+        dctx.beginPath(); dctx.arc(fx, fy, 1.5, 0, Math.PI * 2); dctx.fill();
+    }
+}
+
+// ── Dice ─────────────────────────────────────────────────────
+function rollDice(expression) {
+    const match = expression.match(/(\d*)d(\d+)/);
+    if (!match) return;
+    const count = match[1] ? parseInt(match[1]) : 1;
+    const sides = parseInt(match[2]);
+    const rolls = []; let total = 0;
+    for (let i = 0; i < count; i++) { const r = Math.floor(Math.random() * sides) + 1; rolls.push(r); total += r; }
+    document.getElementById('dice-result').textContent = total;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'dice_roll', roller: myName, expression, result: total, rolls }));
+    }
+}
+
+// ── Chat ─────────────────────────────────────────────────────
+function toggleChat() {
+    chatOpen = !chatOpen;
+    document.getElementById('chat-overlay').classList.toggle('open', chatOpen);
+    if (chatOpen) {
+        unreadChat = 0;
+        document.getElementById('chat-toggle').classList.remove('has-unread');
+    }
+}
+function addChat(type, sender, message) {
+    const container = document.getElementById('chat-messages');
+    const div = document.createElement('div');
+    div.className = `chat-msg ${type}`;
+    if (type === 'system') div.textContent = `⚙ ${sender}`;
+    else if (type === 'roll') div.innerHTML = `🎲 ${sender}`;
+    else if (type === 'dm') div.innerHTML = `👑 <span class="sender">${sender}:</span> ${message}`;
+    else div.innerHTML = `<span class="sender">${sender}:</span> ${message}`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+    if (!chatOpen) {
+        unreadChat++;
+        if (unreadChat > 0) document.getElementById('chat-toggle').classList.add('has-unread');
+    }
+}
+function sendChat() {
+    const input = document.getElementById('chat-input');
+    const message = input.value.trim();
+    if (!message || !ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: 'chat', sender: myName, message }));
+    input.value = '';
+}
+
+// ── Name change ──────────────────────────────────────────────
+document.getElementById('roller-name-input').addEventListener('input', function() { myName = this.value || 'Player'; });
+
+// ── Character viewer ─────────────────────────────────────────
+function viewChar(id) { window.open(`/characters/${id}`, '_blank'); }
+
+// ── Init ─────────────────────────────────────────────────────
+if (myName === DM_NAME) { iAmDM = true; updateRoleDisplay(); }
+addChat('system', `Welcome to ${DM_NAME}'s table!`);
+addChat('system', iAmDM ? 'You are the DM. 👑 Control the map from the DM panel.' : 'Drag your character token to move. 🎲 Roll dice below.');
+</script>
+{% endblock %}

@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ character.character_name }} — CritForge{% endblock %}
+
+{% block content %}
+<div class="form-container char-create">
+    <h1>✏️ Edit {{ character.character_name }}</h1>
+    <p class="subtitle">Campaign: <strong>{{ campaign.name }}</strong></p>
+
+    <form method="POST" action="/characters/{{ character.id }}/update" class="char-form">
+        <!-- Identity -->
+        <fieldset>
+            <legend>Identity</legend>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="player_name">Your Name</label>
+                    <input type="text" id="player_name" name="player_name" required value="{{ character.player_name }}">
+                </div>
+                <div class="form-group">
+                    <label for="character_name">Character Name</label>
+                    <input type="text" id="character_name" name="character_name" required value="{{ character.character_name }}">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="class_name">Class</label>
+                    <input type="text" id="class_name" name="class_name" required value="{{ character.class_name }}">
+                </div>
+                <div class="form-group">
+                    <label for="race">Race</label>
+                    <input type="text" id="race" name="race" required value="{{ character.race }}">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="level">Level</label>
+                    <input type="number" id="level" name="level" value="{{ character.level }}" min="1" max="20">
+                </div>
+                <div class="form-group">
+                    <label for="background">Background</label>
+                    <input type="text" id="background" name="background" value="{{ character.background or '' }}">
+                </div>
+                <div class="form-group">
+                    <label for="alignment">Alignment</label>
+                    <select id="alignment" name="alignment">
+                        {% for a in all_alignments %}
+                        <option value="{{ a }}" {% if a == character.alignment %}selected{% endif %}>{{ a }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </fieldset>
+
+        <!-- Stats -->
+        <fieldset>
+            <legend>Ability Scores</legend>
+            <div class="stats-grid">
+                {% for name, score in stats.items() %}
+                <div class="stat-box">
+                    <label for="stat_{{ name }}">{{ name }}</label>
+                    <input type="number" id="stat_{{ name }}" name="stat_{{ name }}" value="{{ score }}" min="1" max="30">
+                    <span class="stat-mod" id="mod_{{ name }}">{{ '%+d' % ((score - 10) // 2) }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </fieldset>
+
+        <!-- Combat -->
+        <fieldset>
+            <legend>Combat Stats</legend>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="hp_max">Max HP</label>
+                    <input type="number" id="hp_max" name="hp_max" value="{{ character.hp_max }}" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="hp_current">Current HP</label>
+                    <input type="number" id="hp_current" name="hp_current" value="{{ character.hp_current }}" min="0">
+                </div>
+                <div class="form-group">
+                    <label for="ac">AC</label>
+                    <input type="number" id="ac" name="ac" value="{{ character.ac }}" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="initiative_bonus">Init Bonus</label>
+                    <input type="number" id="initiative_bonus" name="initiative_bonus" value="{{ character.initiative_bonus }}">
+                </div>
+                <div class="form-group">
+                    <label for="speed">Speed</label>
+                    <input type="number" id="speed" name="speed" value="{{ character.speed }}" min="1">
+                </div>
+            </div>
+        </fieldset>
+
+        <!-- Proficiencies & Features -->
+        <fieldset>
+            <legend>Proficiencies, Features & Spells</legend>
+            <div class="form-group">
+                <label for="proficiencies">Skill Proficiencies (comma-separated)</label>
+                <input type="text" id="proficiencies" name="proficiencies" value="{{ proficiencies|join(', ') }}">
+            </div>
+            <div class="form-group">
+                <label for="features">Class Features & Traits (one per line)</label>
+                <textarea id="features" name="features" rows="4">{{ features|join('\n') }}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="equipment">Equipment (one per line)</label>
+                <textarea id="equipment" name="equipment" rows="3">{{ equipment|join('\n') }}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="spells">Spells (one per line)</label>
+                <textarea id="spells" name="spells" rows="4">{{ spells|join('\n') }}</textarea>
+            </div>
+        </fieldset>
+
+        <!-- Notes -->
+        <fieldset>
+            <legend>Notes</legend>
+            <div class="form-group">
+                <textarea id="notes" name="notes" rows="3">{{ character.notes or '' }}</textarea>
+            </div>
+        </fieldset>
+
+        <button type="submit" class="btn btn-primary btn-lg">💾 Save Changes</button>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('.stat-box input').forEach(input => {
+    input.addEventListener('input', function() {
+        const stat = this.id.replace('stat_', '');
+        const val = parseInt(this.value) || 10;
+        const mod = Math.floor((val - 10) / 2);
+        const modEl = document.getElementById('mod_' + stat);
+        modEl.textContent = (mod >= 0 ? '+' : '') + mod;
+        modEl.className = 'stat-mod ' + (mod >= 0 ? 'positive' : 'negative');
+    });
+});
+</script>
+{% endblock %}
