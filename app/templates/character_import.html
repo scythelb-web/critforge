@@ -1,19 +1,26 @@
 {% extends "base.html" %}
-{% block title %}Import Character from PDF — CritForge{% endblock %}
+{% block title %}Import Character — CritForge{% endblock %}
 
 {% block content %}
 <div class="form-container char-create">
 
     {% if not pre_fill %}
-    <!-- ═══ STEP 1: Upload ═══ -->
-    <h1>📄 Import Character from PDF</h1>
-    <p class="subtitle">Upload a D&D Beyond PDF, form-fillable character sheet, or any PDF with your character stats. We'll parse out what we can and pre-fill the form for you.</p>
+    <!-- ═══ STEP 1: Upload or Paste ═══ -->
+    <h1>📋 Import Character</h1>
+    <p class="subtitle">Upload a PDF character sheet or paste your stats as plain text. We'll parse out what we can and pre-fill the form for you.</p>
 
     {% if error %}
     <div class="alert alert-error">{{ error }}</div>
     {% endif %}
 
-    <div class="upload-zone">
+    <!-- Tab switcher -->
+    <div class="import-tabs">
+        <button class="import-tab active" data-tab="upload">📄 Upload PDF</button>
+        <button class="import-tab" data-tab="paste">📋 Paste Text</button>
+    </div>
+
+    <!-- Upload PDF panel -->
+    <div class="import-panel" id="panel-upload">
         <form method="POST" action="/characters/import" enctype="multipart/form-data" class="upload-form">
             <div class="upload-area" id="dropZone">
                 <div class="upload-icon">📄</div>
@@ -25,7 +32,18 @@
                 <span id="fileName"></span>
                 <button type="button" id="clearFile" class="btn btn-sm btn-outline">✕</button>
             </div>
-            <button type="submit" class="btn btn-primary btn-lg" id="submitBtn" disabled>
+            <button type="submit" class="btn btn-primary btn-lg" id="submitUpload" disabled>
+                🔍 Parse Character Sheet
+            </button>
+        </form>
+    </div>
+
+    <!-- Paste Text panel -->
+    <div class="import-panel" id="panel-paste" style="display:none">
+        <form method="POST" action="/characters/import/paste" class="paste-form">
+            <textarea name="sheet_text" id="sheetText" rows="14"
+                      placeholder="Paste your character sheet text here — from D&amp;D Beyond, a PDF you already copied from, or any stat block...&#10;&#10;Example:&#10;Character Name: Morvath the Deathless&#10;Class &amp; Level: Necromancer 7&#10;Race: Minotaur&#10;STR: 16  DEX: 12  CON: 14&#10;INT: 18  WIS: 13  CHA: 15&#10;Armor Class: 15&#10;Hit Points: 52&#10;..."></textarea>
+            <button type="submit" class="btn btn-primary btn-lg" id="submitPaste" disabled>
                 🔍 Parse Character Sheet
             </button>
         </form>
@@ -33,7 +51,7 @@
 
     <div class="import-notes">
         <p><strong>What gets parsed:</strong> character name, class, race, level, ability scores (STR/DEX/CON/INT/WIS/CHA), HP, AC, initiative, speed, proficiencies, features, equipment, and spells.</p>
-        <p><strong>After parsing:</strong> you'll review and adjust everything before creating the character. You can also create one from scratch below.</p>
+        <p><strong>After parsing:</strong> you'll review and adjust everything before creating the character.</p>
         <p class="mt-2">
             <a href="/characters/new" class="btn btn-outline">✍️ Build From Scratch Instead</a>
         </p>
@@ -55,7 +73,7 @@
     </div>
     {% else %}
     <div class="alert alert-warning">
-        ⚠️ Couldn't detect any D&D fields automatically. The PDF might be a scanned image or in an unrecognized format.
+        ⚠️ Couldn't detect any D&D fields automatically. The sheet might be a scanned image or in an unrecognized format.
         You can still review the raw text below and manually fill in the form.
     </div>
     {% endif %}
@@ -203,7 +221,7 @@
         </fieldset>
 
         <button type="submit" class="btn btn-primary btn-lg">✨ Create Character</button>
-        <a href="/characters/import" class="btn btn-outline">🔄 Re-upload Different PDF</a>
+        <a href="/characters/import" class="btn btn-outline">🔄 Try Another Import</a>
     </form>
 
     <!-- Raw extracted text (collapsible) -->
@@ -220,13 +238,23 @@
 
 {% block scripts %}
 <script>
+// ── Tab switching ──
+document.querySelectorAll('.import-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.import-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        document.querySelectorAll('.import-panel').forEach(p => p.style.display = 'none');
+        document.getElementById('panel-' + tab.dataset.tab).style.display = 'block';
+    });
+});
+
 // ── Drag & drop upload ──
 const dropZone = document.getElementById('dropZone');
 const fileInput = document.getElementById('pdf_file');
 const fileInfo = document.getElementById('fileInfo');
 const fileName = document.getElementById('fileName');
 const clearBtn = document.getElementById('clearFile');
-const submitBtn = document.getElementById('submitBtn');
+const submitUpload = document.getElementById('submitUpload');
 const uploadArea = document.querySelector('.upload-area');
 
 if (dropZone && fileInput) {
@@ -234,14 +262,14 @@ if (dropZone && fileInput) {
         fileName.textContent = '📎 ' + file.name;
         fileInfo.style.display = 'flex';
         uploadArea.style.display = 'none';
-        submitBtn.disabled = false;
+        submitUpload.disabled = false;
     }
 
     function resetFile() {
         fileInput.value = '';
         fileInfo.style.display = 'none';
         uploadArea.style.display = 'flex';
-        submitBtn.disabled = true;
+        submitUpload.disabled = true;
     }
 
     dropZone.addEventListener('click', () => fileInput.click());
@@ -271,6 +299,15 @@ if (dropZone && fileInput) {
     clearBtn.addEventListener('click', resetFile);
 }
 
+// ── Paste textarea ──
+const sheetText = document.getElementById('sheetText');
+const submitPaste = document.getElementById('submitPaste');
+if (sheetText && submitPaste) {
+    sheetText.addEventListener('input', () => {
+        submitPaste.disabled = !sheetText.value.trim();
+    });
+}
+
 // ── Stat modifier live calculation ──
 document.querySelectorAll('.stat-box input').forEach(input => {
     input.addEventListener('input', function() {
@@ -283,7 +320,6 @@ document.querySelectorAll('.stat-box input').forEach(input => {
             modEl.className = 'stat-mod ' + (mod >= 0 ? 'positive' : 'negative');
         }
     });
-    // Trigger on load for pre-filled values
     input.dispatchEvent(new Event('input'));
 });
 </script>

@@ -91,15 +91,8 @@ def _find_stat_score(text: str, stat: str) -> int | None:
     return None
 
 
-def parse_character_sheet_pdf(pdf_bytes: bytes) -> dict:
-    """Extract text from a PDF character sheet and parse D&D fields.
-
-    Returns a dict with any/all recognized fields:
-        character_name, class_name, race, level, background, alignment,
-        hp_max, ac, initiative_bonus, speed, stats dict, proficiencies list,
-        features list, equipment list, spells list, notes
-    Also includes 'raw_text' for debugging and manual review.
-    """
+def _parse_from_text(full_text: str) -> dict:
+    """Core parser — takes raw text and returns the parsed character dict."""
     result = {
         "character_name": "",
         "class_name": "",
@@ -117,28 +110,14 @@ def parse_character_sheet_pdf(pdf_bytes: bytes) -> dict:
         "equipment": [],
         "spells": [],
         "notes": "",
-        "raw_text": "",
-        "parse_confidence": 0,  # 0-100
+        "raw_text": full_text,
+        "parse_confidence": 0,
     }
-
-    # Extract text
-    try:
-        doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
-        pages = []
-        for page in doc:
-            pages.append(page.get_text("text"))
-        doc.close()
-    except Exception:
-        result["raw_text"] = "[Could not read PDF — file may be corrupted or scanned/image-only]"
-        return result
-
-    full_text = "\n".join(pages)
-    result["raw_text"] = full_text
 
     if not full_text.strip():
         return result
 
-    hits = 0  # track successful parses for confidence
+    hits = 0
     lines = [l.strip() for l in full_text.split("\n") if l.strip()]
 
     # ── Single-line field patterns ──────────────────────────
@@ -300,6 +279,26 @@ def parse_character_sheet_pdf(pdf_bytes: bytes) -> dict:
     return result
 
 
+def parse_character_sheet_pdf(pdf_bytes: bytes) -> dict:
+    """Extract text from a PDF character sheet and parse D&D fields."""
+    try:
+        doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+        pages = [page.get_text("text") for page in doc]
+        doc.close()
+        full_text = "\n".join(pages)
+    except Exception:
+        return {
+            **_parse_from_text(""),
+            "raw_text": "[Could not read PDF — file may be corrupted or scanned/image-only]",
+        }
+    return _parse_from_text(full_text)
+
+
+def parse_character_text(text: str) -> dict:
+    """Parse pasted character sheet text into D&D fields."""
+    return _parse_from_text(text)
+
+
 # ═══ PDF CHARACTER SHEET IMPORT ═══════════════════════════════
 
 @router.get("/import", response_class=HTMLResponse)
@@ -336,6 +335,28 @@ async def import_character_upload(request: Request, pdf_file: UploadFile = File(
         )
 
     parsed = parse_character_sheet_pdf(pdf_bytes)
+    return _render(
+        request,
+        "character_import.html",
+        stats=DND_STATS,
+        skills=DND_SKILLS,
+        alignments=DND_ALIGNMENTS,
+        pre_fill=parsed,
+        error=None,
+    )
+
+
+@router.post("/import/paste", response_class=HTMLResponse)
+async def import_character_paste(request: Request, sheet_text: str = Form(...)):
+    """Handle pasted character sheet text, parse it, and return the pre-filled review form."""
+    if not sheet_text.strip():
+        return _render(
+            request, "character_import.html",
+            stats=DND_STATS, skills=DND_SKILLS, alignments=DND_ALIGNMENTS,
+            pre_fill=None, error="Pasted text was empty.",
+        )
+
+    parsed = parse_character_text(sheet_text)
     return _render(
         request,
         "character_import.html",
