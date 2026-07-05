@@ -1,0 +1,290 @@
+{% extends "base.html" %}
+{% block title %}Import Character from PDF — CritForge{% endblock %}
+
+{% block content %}
+<div class="form-container char-create">
+
+    {% if not pre_fill %}
+    <!-- ═══ STEP 1: Upload ═══ -->
+    <h1>📄 Import Character from PDF</h1>
+    <p class="subtitle">Upload a D&D Beyond PDF, form-fillable character sheet, or any PDF with your character stats. We'll parse out what we can and pre-fill the form for you.</p>
+
+    {% if error %}
+    <div class="alert alert-error">{{ error }}</div>
+    {% endif %}
+
+    <div class="upload-zone">
+        <form method="POST" action="/characters/import" enctype="multipart/form-data" class="upload-form">
+            <div class="upload-area" id="dropZone">
+                <div class="upload-icon">📄</div>
+                <p class="upload-label">Drop your character sheet PDF here</p>
+                <p class="upload-hint">or click to browse — D&D Beyond, form-fillable, any PDF</p>
+                <input type="file" id="pdf_file" name="pdf_file" accept=".pdf,application/pdf" required hidden>
+            </div>
+            <div id="fileInfo" class="file-info" style="display:none">
+                <span id="fileName"></span>
+                <button type="button" id="clearFile" class="btn btn-sm btn-outline">✕</button>
+            </div>
+            <button type="submit" class="btn btn-primary btn-lg" id="submitBtn" disabled>
+                🔍 Parse Character Sheet
+            </button>
+        </form>
+    </div>
+
+    <div class="import-notes">
+        <p><strong>What gets parsed:</strong> character name, class, race, level, ability scores (STR/DEX/CON/INT/WIS/CHA), HP, AC, initiative, speed, proficiencies, features, equipment, and spells.</p>
+        <p><strong>After parsing:</strong> you'll review and adjust everything before creating the character. You can also create one from scratch below.</p>
+        <p class="mt-2">
+            <a href="/characters/new" class="btn btn-outline">✍️ Build From Scratch Instead</a>
+        </p>
+    </div>
+
+    {% else %}
+    <!-- ═══ STEP 2: Review & Create ═══ -->
+    <h1>✅ Review Imported Character</h1>
+
+    {% if pre_fill.parse_confidence > 0 %}
+    <div class="confidence-bar">
+        <div class="confidence-label">
+            Parse confidence: <strong>{{ pre_fill.parse_confidence }}%</strong>
+            ({{ pre_fill.parse_confidence // 7 }} fields detected)
+        </div>
+        <div class="confidence-track">
+            <div class="confidence-fill" style="width:{{ pre_fill.parse_confidence }}%"></div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-warning">
+        ⚠️ Couldn't detect any D&D fields automatically. The PDF might be a scanned image or in an unrecognized format.
+        You can still review the raw text below and manually fill in the form.
+    </div>
+    {% endif %}
+
+    <p class="subtitle">Review the parsed values below, make any corrections, then click Create Character.</p>
+
+    <form method="POST" action="/characters/new" class="char-form">
+        <fieldset>
+            <legend>Identity</legend>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="player_name">Your Name</label>
+                    <input type="text" id="player_name" name="player_name" required placeholder="Your name or handle">
+                </div>
+                <div class="form-group">
+                    <label for="character_name">Character Name</label>
+                    <input type="text" id="character_name" name="character_name" required
+                           placeholder="Morvath the Deathless"
+                           value="{{ pre_fill.character_name|e if pre_fill.character_name else '' }}">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="class_name">Class</label>
+                    <input type="text" id="class_name" name="class_name" required
+                           placeholder="Necromancer" list="class-suggestions"
+                           value="{{ pre_fill.class_name|e if pre_fill.class_name else '' }}">
+                    <datalist id="class-suggestions">
+                        <option value="Barbarian"><option value="Bard"><option value="Cleric">
+                        <option value="Druid"><option value="Fighter"><option value="Monk">
+                        <option value="Paladin"><option value="Ranger"><option value="Rogue">
+                        <option value="Sorcerer"><option value="Warlock"><option value="Wizard">
+                        <option value="Artificer"><option value="Blood Hunter"><option value="Necromancer">
+                    </datalist>
+                </div>
+                <div class="form-group">
+                    <label for="race">Race / Species</label>
+                    <input type="text" id="race" name="race" required
+                           placeholder="Minotaur" list="race-suggestions"
+                           value="{{ pre_fill.race|e if pre_fill.race else '' }}">
+                    <datalist id="race-suggestions">
+                        <option value="Human"><option value="Elf"><option value="Dwarf">
+                        <option value="Halfling"><option value="Dragonborn"><option value="Gnome">
+                        <option value="Half-Elf"><option value="Half-Orc"><option value="Tiefling">
+                        <option value="Aasimar"><option value="Goliath"><option value="Tabaxi">
+                        <option value="Minotaur"><option value="Warforged"><option value="Kenku">
+                        <option value="Undead"><option value="Lizardfolk"><option value="Goblin">
+                    </datalist>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="level">Level</label>
+                    <input type="number" id="level" name="level" value="{{ pre_fill.level }}" min="1" max="20">
+                </div>
+                <div class="form-group">
+                    <label for="background">Background</label>
+                    <input type="text" id="background" name="background" placeholder="Acolyte, Criminal, Sage..."
+                           value="{{ pre_fill.background|e if pre_fill.background else '' }}">
+                </div>
+                <div class="form-group">
+                    <label for="alignment">Alignment</label>
+                    <select id="alignment" name="alignment">
+                        {% for a in alignments %}
+                        <option value="{{ a }}"
+                            {% if pre_fill.alignment == a %}selected
+                            {% elif pre_fill.alignment|lower == a|lower %}selected
+                            {% elif a == 'True Neutral' and not pre_fill.alignment %}selected{% endif %}>
+                            {{ a }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </fieldset>
+
+        <fieldset>
+            <legend>Ability Scores</legend>
+            <div class="stats-grid">
+                {% for s in stats %}
+                <div class="stat-box">
+                    <label for="stat_{{ s }}">{{ s }}</label>
+                    <input type="number" id="stat_{{ s }}" name="stat_{{ s }}"
+                           value="{{ pre_fill.stats[s] }}" min="1" max="30">
+                    <span class="stat-mod" id="mod_{{ s }}">+0</span>
+                </div>
+                {% endfor %}
+            </div>
+        </fieldset>
+
+        <fieldset>
+            <legend>Combat Stats</legend>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="hp_max">Max HP</label>
+                    <input type="number" id="hp_max" name="hp_max" value="{{ pre_fill.hp_max }}" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="ac">Armor Class</label>
+                    <input type="number" id="ac" name="ac" value="{{ pre_fill.ac }}" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="initiative_bonus">Init Bonus</label>
+                    <input type="number" id="initiative_bonus" name="initiative_bonus"
+                           value="{{ pre_fill.initiative_bonus }}">
+                </div>
+                <div class="form-group">
+                    <label for="speed">Speed (ft)</label>
+                    <input type="number" id="speed" name="speed" value="{{ pre_fill.speed }}" min="1">
+                </div>
+            </div>
+        </fieldset>
+
+        <fieldset>
+            <legend>Proficiencies, Features & Spells</legend>
+            <div class="form-group">
+                <label for="proficiencies">Skill Proficiencies (comma-separated)</label>
+                <input type="text" id="proficiencies" name="proficiencies"
+                       placeholder="Arcana, Intimidation, Religion"
+                       value="{{ pre_fill.proficiencies|join(', ')|e if pre_fill.proficiencies else '' }}">
+            </div>
+            <div class="form-group">
+                <label for="features">Class Features & Traits (one per line)</label>
+                <textarea id="features" name="features" rows="4"
+                          placeholder="Grim Harvest: Regain HP on kill...&#10;Undead Thralls: Bonus to animate dead...">{{ pre_fill.features|join('\n')|e if pre_fill.features else '' }}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="equipment">Equipment (one per line)</label>
+                <textarea id="equipment" name="equipment" rows="3"
+                          placeholder="Quarterstaff&#10;Spellbook&#10;Dagger">{{ pre_fill.equipment|join('\n')|e if pre_fill.equipment else '' }}</textarea>
+            </div>
+            <div class="form-group">
+                <label for="spells">Spells (one per line)</label>
+                <textarea id="spells" name="spells" rows="4"
+                          placeholder="Chill Touch&#10;Animate Dead&#10;Blight">{{ pre_fill.spells|join('\n')|e if pre_fill.spells else '' }}</textarea>
+            </div>
+        </fieldset>
+
+        <fieldset>
+            <legend>Notes</legend>
+            <div class="form-group">
+                <textarea id="notes" name="notes" rows="3"
+                          placeholder="Backstory, personality, bonds, flaws...">{{ pre_fill.notes|e if pre_fill.notes else '' }}</textarea>
+            </div>
+        </fieldset>
+
+        <button type="submit" class="btn btn-primary btn-lg">✨ Create Character</button>
+        <a href="/characters/import" class="btn btn-outline">🔄 Re-upload Different PDF</a>
+    </form>
+
+    <!-- Raw extracted text (collapsible) -->
+    {% if pre_fill.raw_text %}
+    <details class="raw-text-section">
+        <summary>📝 View Raw Extracted Text (for manual reference)</summary>
+        <pre class="raw-text">{{ pre_fill.raw_text|e }}</pre>
+    </details>
+    {% endif %}
+
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Drag & drop upload ──
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('pdf_file');
+const fileInfo = document.getElementById('fileInfo');
+const fileName = document.getElementById('fileName');
+const clearBtn = document.getElementById('clearFile');
+const submitBtn = document.getElementById('submitBtn');
+const uploadArea = document.querySelector('.upload-area');
+
+if (dropZone && fileInput) {
+    function showFile(file) {
+        fileName.textContent = '📎 ' + file.name;
+        fileInfo.style.display = 'flex';
+        uploadArea.style.display = 'none';
+        submitBtn.disabled = false;
+    }
+
+    function resetFile() {
+        fileInput.value = '';
+        fileInfo.style.display = 'none';
+        uploadArea.style.display = 'flex';
+        submitBtn.disabled = true;
+    }
+
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            showFile(e.dataTransfer.files[0]);
+        }
+    });
+
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) showFile(fileInput.files[0]);
+    });
+
+    clearBtn.addEventListener('click', resetFile);
+}
+
+// ── Stat modifier live calculation ──
+document.querySelectorAll('.stat-box input').forEach(input => {
+    input.addEventListener('input', function() {
+        const stat = this.id.replace('stat_', '');
+        const val = parseInt(this.value) || 10;
+        const mod = Math.floor((val - 10) / 2);
+        const modEl = document.getElementById('mod_' + stat);
+        if (modEl) {
+            modEl.textContent = (mod >= 0 ? '+' : '') + mod;
+            modEl.className = 'stat-mod ' + (mod >= 0 ? 'positive' : 'negative');
+        }
+    });
+    // Trigger on load for pre-filled values
+    input.dispatchEvent(new Event('input'));
+});
+</script>
+{% endblock %}

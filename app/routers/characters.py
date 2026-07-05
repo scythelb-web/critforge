@@ -1,7 +1,12 @@
 """Character creation and management — full homebrew support."""
 
+import io
 import json
-from fastapi import APIRouter, Request, Form
+import re
+
+import pymupdf
+
+from fastapi import APIRouter, Request, Form, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.database import get_db
@@ -24,7 +29,322 @@ DND_ALIGNMENTS = [
 ]
 
 
-# ═══ STANDALONE CHARACTER BUILDER (no campaign needed) ═══════
+# ═══ PDF CHARACTER SHEET PARSER ═══════════════════════════════
+
+def _find_section(text: str, label: str, next_labels: list[str] | None = None) -> str:
+    """Capture multi-line content after a section header until EOF or next known label."""
+    # Find the label line
+    m = re.search(rf"^{re.escape(label)}[\s:]*(.*)", text, re.IGNORECASE | re.MULTILINE)
+    if not m:
+        return ""
+    start = m.end()
+    remainder = text[start:]
+
+    # If we know next section labels, stop at the first one found
+    if next_labels:
+        earliest = len(remainder)
+        for nl in next_labels:
+            pos = remainder.find(nl)
+            if pos != -1 and pos < earliest:
+                # Check it's at start of a line
+                if pos == 0 or remainder[pos - 1] == "\n":
+                    earliest = pos
+        remainder = remainder[:earliest]
+
+    # Combine the label line remainder + following content
+    content = (m.group(1) + " " + remainder).strip()
+    return re.sub(r"\s+", " ", content)
+
+
+def _find_stat(text: str, labels: list[str]) -> str | None:
+    """Find a field value by trying multiple label patterns."""
+    for label in labels:
+        # Pattern: "Label: value" or "Label value" (case insensitive)
+        m = re.search(rf"{re.escape(label)}[\s:]+(.+)", text, re.IGNORECASE)
+        if m:
+            return m.group(1).strip().rstrip("0123456789 ").strip() or m.group(1).strip()
+    return None
+
+
+def _find_number(text: str, labels: list[str]) -> int | None:
+    """Extract a number after a label."""
+    for label in labels:
+        m = re.search(rf"{re.escape(label)}[\s:]*(\d+)", text, re.IGNORECASE)
+        if m:
+            return int(m.group(1))
+    return None
+
+
+def _find_stat_score(text: str, stat: str) -> int | None:
+    """Find an ability score. Looks for 'STR' / 'Strength' near a number."""
+    patterns = [
+        rf"{stat}\s*[:=]?\s*(\d+)",           # STR 16 or STR: 16
+        rf"{stat}\S*\s+(\d+)\s*[\(\[].*?[+-]",  # STR 16 (+3)
+        rf"\b{stat}\S*\b.*?(\d+)",             # Strength 16
+    ]
+    for p in patterns:
+        m = re.search(p, text, re.IGNORECASE)
+        if m:
+            val = int(m.group(1))
+            if 1 <= val <= 30:
+                return val
+    return None
+
+
+def parse_character_sheet_pdf(pdf_bytes: bytes) -> dict:
+    """Extract text from a PDF character sheet and parse D&D fields.
+
+    Returns a dict with any/all recognized fields:
+        character_name, class_name, race, level, background, alignment,
+        hp_max, ac, initiative_bonus, speed, stats dict, proficiencies list,
+        features list, equipment list, spells list, notes
+    Also includes 'raw_text' for debugging and manual review.
+    """
+    result = {
+        "character_name": "",
+        "class_name": "",
+        "race": "",
+        "level": 1,
+        "background": "",
+        "alignment": "True Neutral",
+        "hp_max": 10,
+        "ac": 10,
+        "initiative_bonus": 0,
+        "speed": 30,
+        "stats": {"STR": 10, "DEX": 10, "CON": 10, "INT": 10, "WIS": 10, "CHA": 10},
+        "proficiencies": [],
+        "features": [],
+        "equipment": [],
+        "spells": [],
+        "notes": "",
+        "raw_text": "",
+        "parse_confidence": 0,  # 0-100
+    }
+
+    # Extract text
+    try:
+        doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+        pages = []
+        for page in doc:
+            pages.append(page.get_text("text"))
+        doc.close()
+    except Exception:
+        result["raw_text"] = "[Could not read PDF — file may be corrupted or scanned/image-only]"
+        return result
+
+    full_text = "\n".join(pages)
+    result["raw_text"] = full_text
+
+    if not full_text.strip():
+        return result
+
+    hits = 0  # track successful parses for confidence
+    lines = [l.strip() for l in full_text.split("\n") if l.strip()]
+
+    # ── Single-line field patterns ──────────────────────────
+    single_patterns = [
+        # (field_key, [regex patterns to try])
+        ("character_name", [r"Character\s*Name\s*:?\s*(.+)", r"^Name\s*:?\s*(.+)"],
+         lambda v: v.strip().rstrip("0123456789 ").strip() or v.strip()),
+        ("race", [r"Race\s*:?\s*(.+)", r"Species\s*:?\s*(.+)", r"Ancestry\s*:?\s*(.+)"],
+         lambda v: v.strip()),
+        ("background", [r"Background\s*:?\s*(.+)"],
+         lambda v: v.strip()),
+        ("alignment", [r"Alignment\s*:?\s*(.+)"],
+         lambda v: v.strip()),
+        ("class_name", [r"Class\s*(?:&|and)\s*Level\s*:?\s*(.+)",
+                        r"Class\s*:?\s*(.+)"],
+         lambda v: v.strip()),
+    ]
+
+    for field, patterns, transform in single_patterns:
+        found = False
+        for line in lines:
+            for pat in patterns:
+                m = re.match(pat, line, re.IGNORECASE)
+                if m:
+                    val = transform(m.group(1))
+                    # For class_name, try to split level off the end
+                    if field == "class_name":
+                        lvl_match = re.search(r"(\d+)$", val)
+                        if lvl_match:
+                            result["level"] = int(lvl_match.group(1))
+                            val = val[:lvl_match.start()].strip()
+                            if not val:
+                                val = m.group(1).strip()
+                    if val and val != result.get(field, ""):
+                        result[field] = val
+                        hits += 1
+                        found = True
+                    break
+            if found:
+                break
+
+    # ── Level (standalone) ──────────────────────────────────
+    for line in lines:
+        m = re.match(r"Level\s*:?\s*(\d+)", line, re.IGNORECASE)
+        if m:
+            lvl = int(m.group(1))
+            if result["level"] == 1 or lvl > 1:
+                result["level"] = lvl
+                hits += 1
+            break
+
+    # ── Numeric fields ──────────────────────────────────────
+    num_patterns = [
+        ("hp_max", [r"Hit\s*Point\s*Maximum\s*:?\s*(\d+)",
+                     r"Hit\s*Points?\s*:?\s*(\d+)",
+                     r"HP\s*Max\s*:?\s*(\d+)",
+                     r"Max\s*HP\s*:?\s*(\d+)",
+                     r"^HP\s*:?\s*(\d+)"]),
+        ("ac", [r"Armor\s*Class\s*:?\s*(\d+)",
+                r"^AC\s*:?\s*(\d+)"]),
+        ("initiative_bonus", [r"Initiative\s*:?\s*([+-]?\d+)",
+                               r"^Init\s*:?\s*([+-]?\d+)"]),
+        ("speed", [r"Speed\s*:?\s*(\d+)"]),
+    ]
+
+    for field, patterns in num_patterns:
+        found = False
+        for line in lines:
+            for pat in patterns:
+                m = re.match(pat, line, re.IGNORECASE)
+                if m:
+                    result[field] = int(m.group(1))
+                    hits += 1
+                    found = True
+                    break
+            if found:
+                break
+
+    # ── Ability Scores ──────────────────────────────────────
+    stat_map = {"STR": "STR", "DEX": "DEX", "CON": "CON",
+                "INT": "INT", "WIS": "WIS", "CHA": "CHA"}
+    stat_aliases = {
+        "STR": ["STR", "Strength"],
+        "DEX": ["DEX", "Dexterity"],
+        "CON": ["CON", "Constitution"],
+        "INT": ["INT", "Intelligence"],
+        "WIS": ["WIS", "Wisdom"],
+        "CHA": ["CHA", "Charisma"],
+    }
+    for key, aliases in stat_aliases.items():
+        for alias in aliases:
+            for line in lines:
+                # Pattern: "STR: 16" or "STR 16 (+3)" or "Strength 16"
+                m = re.search(rf"\b{re.escape(alias)}\s*:?\s*(\d+)", line, re.IGNORECASE)
+                if m:
+                    val = int(m.group(1))
+                    if 1 <= val <= 30:
+                        result["stats"][key] = val
+                        hits += 1
+                        break
+            if result["stats"][key] != 10:
+                break
+
+    # ── Multi-line sections (search in full text) ───────────
+    # All known section labels for boundary detection
+    all_section_labels = [
+        "Proficiencies", "Skill Proficiencies", "Saving Throws",
+        "Features & Traits", "Features and Traits", "Class Features", "Feats",
+        "Equipment", "Inventory", "Gear",
+        "Spells", "Spellcasting", "Spell List", "Cantrips", "Prepared Spells",
+    ]
+
+    # Proficiencies
+    prof_section = _find_section(full_text, "Proficiencies", all_section_labels)
+    if not prof_section:
+        prof_section = _find_section(full_text, "Skill Proficiencies", all_section_labels)
+    if not prof_section:
+        prof_section = _find_section(full_text, "Saving Throws", all_section_labels)
+    if prof_section:
+        prof_list = re.split(r"[,;•●○◆◇]", prof_section)
+        result["proficiencies"] = [p.strip() for p in prof_list if p.strip() and len(p.strip()) > 2]
+        if result["proficiencies"]:
+            hits += 1
+
+    # Features
+    feat_section = _find_section(full_text, "Features & Traits", all_section_labels)
+    if not feat_section:
+        feat_section = _find_section(full_text, "Features and Traits", all_section_labels)
+    if not feat_section:
+        feat_section = _find_section(full_text, "Class Features", all_section_labels)
+    if feat_section:
+        result["features"] = [f.strip() for f in feat_section.split(".") if f.strip()]
+        if result["features"]:
+            hits += 1
+
+    # Equipment
+    equip_section = _find_section(full_text, "Equipment", all_section_labels)
+    if not equip_section:
+        equip_section = _find_section(full_text, "Inventory", all_section_labels)
+    if equip_section:
+        result["equipment"] = [e.strip() for e in re.split(r"[,;•●○]", equip_section) if e.strip()]
+        if result["equipment"]:
+            hits += 1
+
+    # Spells
+    spell_section = _find_section(full_text, "Spells", all_section_labels)
+    if not spell_section:
+        spell_section = _find_section(full_text, "Spellcasting", all_section_labels)
+    if not spell_section:
+        spell_section = _find_section(full_text, "Cantrips", all_section_labels)
+    if spell_section:
+        result["spells"] = [s.strip() for s in re.split(r"[,;•●○]", spell_section) if s.strip()]
+        if result["spells"]:
+            hits += 1
+
+    # ── Confidence ──────────────────────────────────────────
+    result["parse_confidence"] = min(100, hits * 7)
+
+    return result
+
+
+# ═══ PDF CHARACTER SHEET IMPORT ═══════════════════════════════
+
+@router.get("/import", response_class=HTMLResponse)
+async def import_character_page(request: Request):
+    """Show the PDF upload + pre-fill form."""
+    return _render(
+        request,
+        "character_import.html",
+        stats=DND_STATS,
+        skills=DND_SKILLS,
+        alignments=DND_ALIGNMENTS,
+        pre_fill=None,
+    )
+
+
+@router.post("/import", response_class=HTMLResponse)
+async def import_character_upload(request: Request, pdf_file: UploadFile = File(...)):
+    """Handle PDF upload, parse it, and return the pre-filled review form."""
+    pdf_bytes = await pdf_file.read()
+
+    if not pdf_bytes:
+        return _render(
+            request, "character_import.html",
+            stats=DND_STATS, skills=DND_SKILLS, alignments=DND_ALIGNMENTS,
+            pre_fill=None, error="No file uploaded or file was empty.",
+        )
+
+    # Check it's actually a PDF
+    if not pdf_bytes[:4] == b"%PDF":
+        return _render(
+            request, "character_import.html",
+            stats=DND_STATS, skills=DND_SKILLS, alignments=DND_ALIGNMENTS,
+            pre_fill=None, error="Uploaded file is not a valid PDF.",
+        )
+
+    parsed = parse_character_sheet_pdf(pdf_bytes)
+    return _render(
+        request,
+        "character_import.html",
+        stats=DND_STATS,
+        skills=DND_SKILLS,
+        alignments=DND_ALIGNMENTS,
+        pre_fill=parsed,
+        error=None,
+    )
 
 @router.get("/new", response_class=HTMLResponse)
 async def new_character_page(request: Request):
