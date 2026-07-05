@@ -324,7 +324,12 @@ footer, .top-nav { display: none; }
             <button onclick="rollDice('1d6')">d6</button>
             <button onclick="rollDice('1d4')">d4</button>
             <button onclick="rollDice('2d6')">2d6</button>
+            <button onclick="rollDice('4d6')">4d6</button>
         </div>
+        <input type="text" id="custom-dice" placeholder="3d8+2..."
+               onkeydown="if(event.key==='Enter')rollCustom()"
+               style="background:#16213e;border:1px solid #2a2a3a;color:#ccc;padding:6px 8px;border-radius:6px;font-size:13px;width:90px;text-align:center;font-family:'Courier New',monospace;">
+        <button onclick="rollCustom()" style="background:#0f3460;color:#4fc3f7;border:1px solid #4fc3f7;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold;">Roll</button>
         <span id="dice-result">—</span>
         <button id="chat-toggle" onclick="toggleChat()">💬 Chat</button>
         <label style="font-size:11px;color:#888;display:flex;align-items:center;gap:4px;cursor:pointer;">
@@ -1091,6 +1096,75 @@ function rollDice(expression) {
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'dice_roll', roller: myName, expression, result: total, rolls }));
     }
+}
+
+function rollCustom() {
+    const input = document.getElementById('custom-dice');
+    let expr = input.value.trim();
+    if (!expr) return;
+
+    // Parse: supports "3d8+2", "1d20+5", "4d6-1", "2d20kh1", "2d20kl1", "2d6+1d8"
+    let total = 0;
+    const allRolls = [];
+    let displayExpr = expr;
+
+    // Handle keep highest/lowest: 2d20kh1, 3d6kh2, etc.
+    const khMatch = expr.match(/^(\d+)d(\d+)kh(\d+)$/i);
+    const klMatch = expr.match(/^(\d+)d(\d+)kl(\d+)$/i);
+    if (khMatch || klMatch) {
+        const isKH = !!khMatch;
+        const m = khMatch || klMatch;
+        const count = parseInt(m[1]);
+        const sides = parseInt(m[2]);
+        const keep = parseInt(m[3]);
+        const rolls = [];
+        for (let i = 0; i < count; i++) rolls.push(Math.floor(Math.random() * sides) + 1);
+        rolls.sort((a, b) => isKH ? b - a : a - b);
+        const kept = rolls.slice(0, keep);
+        total = kept.reduce((a, b) => a + b, 0);
+        allRolls.push(...rolls);
+        displayExpr = `${expr} [${rolls.join(', ')} → keep ${kept.join(', ')}]`;
+    } else {
+        // Parse standard dice expressions with modifiers
+        // Match dice groups: 2d6, 1d20, 3d8 etc, and modifiers: +5, -2
+        const parts = expr.match(/(\d+d\d+|[+-]\d+)/g);
+        if (!parts) {
+            // Try simpler: just a number
+            const num = parseInt(expr);
+            if (!isNaN(num)) { total = num; allRolls.push(num); }
+            else return;
+        } else {
+            for (const part of parts) {
+                if (part.includes('d')) {
+                    const dm = part.match(/(\d+)d(\d+)/);
+                    if (!dm) continue;
+                    const count = parseInt(dm[1]);
+                    const sides = parseInt(dm[2]);
+                    for (let i = 0; i < count; i++) {
+                        const r = Math.floor(Math.random() * sides) + 1;
+                        allRolls.push(r);
+                        total += r;
+                    }
+                } else {
+                    const mod = parseInt(part);
+                    total += mod;
+                    allRolls.push(mod);
+                }
+            }
+        }
+    }
+
+    document.getElementById('dice-result').textContent = total;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'dice_roll',
+            roller: myName,
+            expression: displayExpr,
+            result: total,
+            rolls: allRolls,
+        }));
+    }
+    input.value = '';
 }
 
 // ── Chat ─────────────────────────────────────────────────────
