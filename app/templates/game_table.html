@@ -327,6 +327,8 @@ footer, .top-nav { display: none; }
         </div>
         <span id="dice-result">—</span>
         <button id="chat-toggle" onclick="toggleChat()">💬 Chat</button>
+        <button onclick="toggleMic()" title="Toggle Microphone" style="background:#16213e;color:#ccc;border:1px solid #2a2a3a;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;">🎤</button>
+        <button onclick="toggleCamera()" title="Toggle Camera" style="background:#16213e;color:#ccc;border:1px solid #2a2a3a;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;">📹</button>
     </div>
 </div>
 
@@ -1127,5 +1129,129 @@ function viewChar(id) { window.open(`/characters/${id}`, '_blank'); }
 if (myName === DM_NAME) { iAmDM = true; updateRoleDisplay(); }
 addChat('system', `Welcome to ${DM_NAME}'s table!`);
 addChat('system', iAmDM ? 'You are the DM. 👑 Control the map from the DM panel.' : 'Drag your character token to move. 🎲 Roll dice below.');
+
+// ── LiveKit Video/Audio ──────────────────────────────────────
+let lkRoom = null;
+let lkConnected = false;
+
+async function connectLiveKit() {
+    try {
+        const resp = await fetch(`/game/${INVITE_CODE}/livekit-token?name=${encodeURIComponent(myName)}`);
+        const data = await resp.json();
+        if (data.error) { console.log('LiveKit not configured'); return; }
+
+        const room = new LivekitClient.Room({
+            adaptiveStream: true,
+            dynacast: true,
+        });
+
+        room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+            if (track.kind === 'video') {
+                const el = track.attach();
+                el.style.width = '100%';
+                el.style.height = '100%';
+                el.style.objectFit = 'cover';
+                el.style.borderRadius = '8px';
+                showVideoTile(participant.identity, el);
+            }
+            if (track.kind === 'audio') {
+                track.attach(); // auto-plays audio
+            }
+        });
+
+        room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+            hideVideoTile(participant.identity);
+        });
+
+        room.on(LivekitClient.RoomEvent.ParticipantConnected, (participant) => {
+            addChat('system', `📹 ${participant.identity} joined the table`);
+        });
+
+        room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
+            addChat('system', `📹 ${participant.identity} left`);
+            hideVideoTile(participant.identity);
+        });
+
+        await room.connect('wss://critforge-r9xnjc90.livekit.cloud', data.token);
+        lkRoom = room;
+        lkConnected = true;
+        addChat('system', '🎥 Video chat connected!');
+        console.log('LiveKit connected as', myName);
+    } catch (e) {
+        console.log('LiveKit connection failed:', e.message);
+    }
+}
+
+function showVideoTile(identity, videoEl) {
+    // Find the seat for this player and replace avatar with video
+    const seats = document.querySelectorAll('.player-seat');
+    for (const seat of seats) {
+        const nameEl = seat.querySelector('.seat-name');
+        if (nameEl && nameEl.textContent === identity) {
+            const avatar = seat.querySelector('.seat-avatar');
+            if (avatar) {
+                avatar.innerHTML = '';
+                avatar.appendChild(videoEl);
+                avatar.style.overflow = 'hidden';
+                avatar.style.width = '64px';
+                avatar.style.height = '64px';
+                avatar.style.borderRadius = '8px';
+                avatar.style.border = '2px solid #4fc3f7';
+            }
+            return;
+        }
+    }
+    // If no seat found, DM might still be waiting — check DM seat
+    if (identity === DM_NAME) {
+        const dmAvatar = document.querySelector('#dm-seat .seat-avatar');
+        if (dmAvatar) {
+            dmAvatar.innerHTML = '';
+            dmAvatar.appendChild(videoEl);
+            dmAvatar.style.overflow = 'hidden';
+            dmAvatar.style.width = '64px';
+            dmAvatar.style.height = '64px';
+            dmAvatar.style.borderRadius = '8px';
+        }
+    }
+}
+
+function hideVideoTile(identity) {
+    const seats = document.querySelectorAll('.player-seat');
+    for (const seat of seats) {
+        const nameEl = seat.querySelector('.seat-name');
+        if (nameEl && nameEl.textContent === identity) {
+            const avatar = seat.querySelector('.seat-avatar');
+            if (avatar) {
+                avatar.innerHTML = identity.charAt(0).toUpperCase();
+                avatar.style.width = '36px';
+                avatar.style.height = '36px';
+                avatar.style.borderRadius = '50%';
+                avatar.style.border = '2px solid rgba(255,255,255,0.2)';
+            }
+            return;
+        }
+    }
+}
+
+// Mute/unmute toggle
+function toggleMic() {
+    if (!lkRoom) return;
+    const pub = lkRoom.localParticipant;
+    pub.setMicrophoneEnabled(!pub.isMicrophoneEnabled);
+    return pub.isMicrophoneEnabled;
+}
+
+function toggleCamera() {
+    if (!lkRoom) return;
+    const pub = lkRoom.localParticipant;
+    pub.setCameraEnabled(!pub.isCameraEnabled);
+    return pub.isCameraEnabled;
+}
+
+// Connect LiveKit after WebSocket confirms role
+const origOnMessage = ws?.onmessage;
+setTimeout(() => {
+    if (iAmDM !== undefined) connectLiveKit();
+}, 1500);
 </script>
 {% endblock %}

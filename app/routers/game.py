@@ -88,6 +88,26 @@ async def game_table(request: Request, invite_code: str):
     )
 
 
+# ── LiveKit token endpoint ────────────────────────────────────
+
+@router.get("/{invite_code}/livekit-token")
+async def get_livekit_token(invite_code: str, name: str = "Player"):
+    """Generate a LiveKit access token for a participant to join the video room."""
+    from app.config import LK_API_KEY as api_key, LK_API_SECRET as api_secret
+    from app.services.livekit import generate_livekit_token
+
+    if not api_key or not api_secret:
+        return {"error": "LiveKit not configured"}
+
+    token = generate_livekit_token(
+        room_name=f"critforge-{invite_code}",
+        participant_name=name,
+        api_key=api_key,
+        api_secret=api_secret,
+    )
+    return {"token": token}
+
+
 # ── WebSocket endpoint ────────────────────────────────────────
 
 @router.websocket("/{invite_code}/ws")
