@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stream View — {{ campaign.name }}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a14;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            font-family: sans-serif;
+        }
+        #map-canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100vw;
+            height: 100vh;
+        }
+        /* Dice overlay */
+        #dice-overlay {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            color: #f0c040;
+            padding: 8px 20px;
+            border-radius: 12px;
+            font-size: 24px;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 10;
+            border: 1px solid rgba(240,192,64,0.3);
+        }
+        #dice-overlay.show { opacity: 1; }
+        #dice-overlay .roller { font-size: 12px; color: #888; display: block; }
+        /* Campaign name watermark */
+        #watermark {
+            position: fixed;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.15);
+            font-size: 14px;
+            pointer-events: none;
+            z-index: 5;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="map-canvas"></canvas>
+    <div id="dice-overlay"><span class="roller"></span><span id="dice-text"></span></div>
+    <div id="watermark">{{ campaign.name }}</div>
+
+    <script>
+        const INVITE_CODE = "{{ campaign.invite_code }}";
+        let tokens = [];
+        let mapImage = null;
+        let showGrid = true;
+
+        {% if tokens %}
+        tokens = [
+            {% for t in tokens %}
+            { id: {{ t.id }}, character_id: {{ t.character_id or 'null' }}, name: "{{ t.name|e }}", x: {{ t.x }}, y: {{ t.y }} },
+            {% endfor %}
+        ];
+        {% endif %}
+        {% if map_image %}
+        mapImage = "{{ map_image.image_url }}";
+        {% endif %}
+
+        const canvas = document.getElementById('map-canvas');
+        const ctx = canvas.getContext('2d');
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            draw();
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        const bgImage = new Image();
+        function loadBg() { if (mapImage) bgImage.src = mapImage; }
+        loadBg();
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Dark wood gradient
+            const grad = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 0, canvas.width/2, canvas.height/2, canvas.width*0.7);
+            grad.addColorStop(0, '#1a1a2e');
+            grad.addColorStop(1, '#0a0a14');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (mapImage && bgImage.complete && bgImage.naturalWidth > 0) {
+                ctx.drawImage(bgImage, 0, 0, canvas.width, canvas.height);
+            }
+
+            // Grid
+            if (showGrid) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+                ctx.lineWidth = 1;
+                const gs = 50;
+                for (let x = 0; x < canvas.width; x += gs) {
+                    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+                }
+                for (let y = 0; y < canvas.height; y += gs) {
+                    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+                }
+            }
+
+            // Tokens
+            tokens.forEach(t => {
+                const r = 22;
+                const sx = t.x, sy = t.y;
+                const isNPC = !t.character_id;
+
+                ctx.fillStyle = isNPC ? '#e94560' : '#4fc3f7';
+                ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#1a1a2e'; ctx.lineWidth = 2; ctx.stroke();
+
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(t.name.charAt(0).toUpperCase(), sx, sy);
+
+                ctx.font = '10px sans-serif';
+                ctx.textBaseline = 'alphabetic';
+                ctx.fillText(t.name, sx, sy - r - 5);
+            });
+        }
+
+        // WebSocket
+        function connectWS() {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const ws = new WebSocket(`${protocol}//${location.host}/game/${INVITE_CODE}/ws`);
+
+            ws.onopen = () => {
+                ws.send(JSON.stringify({ type: 'auth', name: 'StreamView', is_dm: false }));
+            };
+
+            ws.onclose = () => setTimeout(connectWS, 2000);
+
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'state') {
+                    if (msg.tokens) tokens = msg.tokens;
+                    if (msg.map_image) { mapImage = msg.map_image.image_url; loadBg(); }
+                    draw();
+                }
+                else if (msg.type === 'token_move') {
+                    const t = tokens.find(tk => tk.id === msg.token_id);
+                    if (t) { t.x = msg.x; t.y = msg.y; draw(); }
+                }
+                else if (msg.type === 'token_add') {
+                    tokens.push(msg.token); draw();
+                }
+                else if (msg.type === 'token_remove') {
+                    tokens = tokens.filter(tk => tk.id !== msg.token_id); draw();
+                }
+                else if (msg.type === 'dice_roll') {
+                    const overlay = document.getElementById('dice-overlay');
+                    const rollsStr = msg.rolls.length ? ` [${msg.rolls.join(', ')}]` : '';
+                    document.getElementById('dice-text').textContent = `${msg.expression} = ${msg.result}${rollsStr}`;
+                    overlay.querySelector('.roller').textContent = msg.roller;
+                    overlay.classList.add('show');
+                    clearTimeout(overlay._timeout);
+                    overlay._timeout = setTimeout(() => overlay.classList.remove('show'), 4000);
+                }
+                else if (msg.type === 'map_set') {
+                    mapImage = msg.image_url; loadBg(); draw();
+                }
+                else if (msg.type === 'map_reset') {
+                    mapImage = null; loadBg(); draw();
+                }
+            };
+        }
+        connectWS();
+        draw();
+    </script>
+</body>
+</html>

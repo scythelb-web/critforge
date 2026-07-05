@@ -88,6 +88,36 @@ async def game_table(request: Request, invite_code: str):
     )
 
 
+# ── Streamer View (OBS-compatible, clean map only) ─────────────
+
+@router.get("/{invite_code}/stream", response_class=HTMLResponse)
+async def stream_view(request: Request, invite_code: str):
+    """Clean view for OBS browser source — just the map, no UI chrome."""
+    with get_db() as db:
+        campaign = db.execute(
+            "SELECT * FROM campaigns WHERE invite_code = ?", (invite_code,)
+        ).fetchone()
+        if not campaign:
+            return HTMLResponse("<h1>Campaign not found</h1>", status_code=404)
+
+        tokens = db.execute(
+            "SELECT * FROM map_tokens WHERE campaign_id = ?", (campaign["id"],)
+        ).fetchall()
+
+        map_img = db.execute(
+            "SELECT * FROM map_images WHERE campaign_id = ? ORDER BY id DESC LIMIT 1",
+            (campaign["id"],),
+        ).fetchone()
+
+    return _render(
+        request,
+        "stream_view.html",
+        campaign=campaign,
+        tokens=tokens,
+        map_image=map_img,
+    )
+
+
 # ── LiveKit token endpoint ────────────────────────────────────
 
 @router.get("/{invite_code}/livekit-token")

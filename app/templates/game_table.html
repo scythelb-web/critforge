@@ -327,6 +327,10 @@ footer, .top-nav { display: none; }
         </div>
         <span id="dice-result">—</span>
         <button id="chat-toggle" onclick="toggleChat()">💬 Chat</button>
+        <label style="font-size:11px;color:#888;display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <input type="checkbox" id="audio-only-check" onchange="handleAudioOnlyToggle(this.checked)" style="accent-color:#e94560;">
+            🎤 Audio Only
+        </label>
         <button onclick="toggleMic()" title="Toggle Microphone" style="background:#16213e;color:#ccc;border:1px solid #2a2a3a;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;">🎤</button>
         <button onclick="toggleCamera()" title="Toggle Camera" style="background:#16213e;color:#ccc;border:1px solid #2a2a3a;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;">📹</button>
     </div>
@@ -345,6 +349,8 @@ footer, .top-nav { display: none; }
     <button onclick="generateMap('field')">🌾 Open Field</button>
     <hr>
     <button onclick="resetMap()">🗺 Clear Map</button>
+    <hr>
+    <button onclick="openStreamView()" style="background:#0f3460;border-color:#4fc3f7;color:#4fc3f7;">📡 Open Stream View</button>
 </div>
 
 <!-- ═══ CHAT OVERLAY ═══ -->
@@ -1125,6 +1131,11 @@ document.getElementById('roller-name-input').addEventListener('input', function(
 // ── Character viewer ─────────────────────────────────────────
 function viewChar(id) { window.open(`/characters/${id}`, '_blank'); }
 
+// ── Stream view ───────────────────────────────────────────────
+function openStreamView() {
+    window.open(`/game/${INVITE_CODE}/stream`, '_blank', 'width=1920,height=1080');
+}
+
 // ── Init ─────────────────────────────────────────────────────
 if (myName === DM_NAME) { iAmDM = true; updateRoleDisplay(); }
 addChat('system', `Welcome to ${DM_NAME}'s table!`);
@@ -1133,6 +1144,7 @@ addChat('system', iAmDM ? 'You are the DM. 👑 Control the map from the DM pane
 // ── LiveKit Video/Audio ──────────────────────────────────────
 let lkRoom = null;
 let lkConnected = false;
+let audioOnly = false;
 
 async function connectLiveKit() {
     try {
@@ -1172,7 +1184,10 @@ async function connectLiveKit() {
             hideVideoTile(participant.identity);
         });
 
-        await room.connect('wss://critforge-r9xnjc90.livekit.cloud', data.token);
+        await room.connect('wss://critforge-r9xnjc90.livekit.cloud', data.token, {
+            video: !audioOnly,
+            audio: true,
+        });
         lkRoom = room;
         lkConnected = true;
         addChat('system', '🎥 Video chat connected!');
@@ -1246,6 +1261,14 @@ function toggleCamera() {
     const pub = lkRoom.localParticipant;
     pub.setCameraEnabled(!pub.isCameraEnabled);
     return pub.isCameraEnabled;
+}
+
+function handleAudioOnlyToggle(checked) {
+    audioOnly = checked;
+    if (lkRoom && lkConnected) {
+        // Already connected — toggle camera
+        lkRoom.localParticipant.setCameraEnabled(!checked);
+    }
 }
 
 // Connect LiveKit after WebSocket confirms role
