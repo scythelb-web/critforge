@@ -363,3 +363,48 @@ async def update_character(
         )
 
     return RedirectResponse(f"/characters/{character_id}", status_code=303)
+
+
+# ═══ CHARACTER NOTEBOOK ═══════════════════════════════════════
+
+@router.get("/{character_id}/notebook", response_class=HTMLResponse)
+async def character_notebook(request: Request, character_id: int):
+    with get_db() as db:
+        char = db.execute(
+            "SELECT * FROM characters WHERE id = ?", (character_id,)
+        ).fetchone()
+        if not char:
+            return HTMLResponse("<h1>Character not found</h1>", status_code=404)
+
+        notes = db.execute(
+            "SELECT * FROM character_notes WHERE character_id = ? ORDER BY created_at DESC",
+            (character_id,),
+        ).fetchall()
+
+    return _render(
+        request,
+        "character_notebook.html",
+        character=char,
+        notes=notes,
+    )
+
+
+@router.post("/{character_id}/notebook")
+async def add_note(
+    character_id: int,
+    title: str = Form("Session Note"),
+    content: str = Form(""),
+):
+    with get_db() as db:
+        char = db.execute(
+            "SELECT * FROM characters WHERE id = ?", (character_id,)
+        ).fetchone()
+        if not char:
+            return HTMLResponse("<h1>Character not found</h1>", status_code=404)
+
+        db.execute(
+            "INSERT INTO character_notes (character_id, title, content) VALUES (?, ?, ?)",
+            (character_id, title, content),
+        )
+
+    return RedirectResponse(f"/characters/{character_id}/notebook", status_code=303)

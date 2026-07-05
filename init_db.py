@@ -82,6 +82,15 @@ def init_db():
                 sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (campaign_id) REFERENCES campaigns(id)
             );
+
+            CREATE TABLE IF NOT EXISTS character_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_id INTEGER NOT NULL,
+                title TEXT NOT NULL DEFAULT 'Session Note',
+                content TEXT NOT NULL DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (character_id) REFERENCES characters(id)
+            );
         """)
     print("✓ Database initialized")
 

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Notebook — {{ character.character_name }}{% endblock %}
+
+{% block content %}
+<div class="char-sheet">
+    <div class="sheet-header">
+        <h1>📓 {{ character.character_name }}'s Notebook</h1>
+        <p class="sheet-identity">
+            Level {{ character.level }} {{ character.race }} {{ character.class_name }}
+        </p>
+        <div class="sheet-actions">
+            <a href="/characters/{{ character.id }}" class="btn btn-sm">← Back to Sheet</a>
+        </div>
+    </div>
+
+    <!-- New Note Form -->
+    <div style="padding:20px;background:var(--surface);border-bottom:1px solid var(--border);">
+        <h3 style="margin:0 0 12px;">✏️ New Note</h3>
+        <form method="POST" action="/characters/{{ character.id }}/notebook">
+            <div class="form-group">
+                <label for="title">Title</label>
+                <input type="text" id="title" name="title" required
+                       placeholder="Session 1: The Tomb Opens..."
+                       value="Session Note" maxlength="200">
+            </div>
+            <div class="form-group">
+                <label for="content">Content</label>
+                <textarea id="content" name="content" rows="6"
+                          placeholder="Write your session notes, discoveries, character development, quest log..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">💾 Save Note</button>
+        </form>
+    </div>
+
+    <!-- Notes List -->
+    <div style="padding:20px;">
+        {% if notes %}
+        <h3 style="margin:0 0 16px;">{{ notes|length }} Note{% if notes|length != 1 %}s{% endif %}</h3>
+        {% for note in notes %}
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <h4 style="margin:0;color:var(--accent);">{{ note.title }}</h4>
+                <span style="font-size:11px;color:#666;">{{ note.created_at }}</span>
+            </div>
+            <p style="margin:0;color:var(--text-muted);white-space:pre-wrap;font-size:14px;line-height:1.6;">{{ note.content }}</p>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="empty-state">
+            <p>No notes yet. Start journaling your adventure!</p>
+            <p style="font-size:13px;color:#666;">Track quests, NPCs, loot, discoveries, and character development.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
