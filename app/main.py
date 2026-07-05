@@ -9,6 +9,12 @@ from app.templating import render
 app = FastAPI(title="CritForge", version="0.1.0")
 
 
+@app.on_event("startup")
+async def startup():
+    from init_db import init_db
+    init_db()
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
