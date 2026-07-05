@@ -328,9 +328,19 @@ footer, .top-nav { display: none; }
         </div>
         <input type="text" id="custom-dice" placeholder="3d8+2..."
                onkeydown="if(event.key==='Enter')rollCustom()"
+               onfocus="showDiceHelp()" onblur="hideDiceHelp()"
                style="background:#16213e;border:1px solid #2a2a3a;color:#ccc;padding:6px 8px;border-radius:6px;font-size:13px;width:90px;text-align:center;font-family:'Courier New',monospace;">
         <button onclick="rollCustom()" style="background:#0f3460;color:#4fc3f7;border:1px solid #4fc3f7;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold;">Roll</button>
         <span id="dice-result">—</span>
+        <div id="dice-help" style="display:none;position:fixed;bottom:72px;left:50%;transform:translateX(-50%);background:#12122a;border:2px solid #4fc3f7;border-radius:10px;padding:10px 16px;z-index:200;font-size:11px;color:#ccc;line-height:1.8;box-shadow:0 4px 20px rgba(0,0,0,0.6);pointer-events:none;">
+            <b style="color:#4fc3f7;">Dice Formats:</b><br>
+            <code style="color:#f0c040;">3d8+2</code> — roll 3d8, add 2<br>
+            <code style="color:#f0c040;">1d20+5</code> — attack roll<br>
+            <code style="color:#f0c040;">2d20kh1</code> — advantage (keep highest)<br>
+            <code style="color:#f0c040;">2d20kl1</code> — disadvantage (keep lowest)<br>
+            <code style="color:#f0c040;">8d6</code> — fireball!<br>
+            <code style="color:#f0c040;">2d6+1d8</code> — mixed dice
+        </div>
         <button id="chat-toggle" onclick="toggleChat()">💬 Chat</button>
         <label style="font-size:11px;color:#888;display:flex;align-items:center;gap:4px;cursor:pointer;">
             <input type="checkbox" id="audio-only-check" onchange="handleAudioOnlyToggle(this.checked)" style="accent-color:#e94560;">
@@ -1165,6 +1175,15 @@ function rollCustom() {
         }));
     }
     input.value = '';
+}
+
+function showDiceHelp() {
+    document.getElementById('dice-help').style.display = 'block';
+}
+function hideDiceHelp() {
+    setTimeout(() => {
+        document.getElementById('dice-help').style.display = 'none';
+    }, 200);
 }
 
 // ── Chat ─────────────────────────────────────────────────────
