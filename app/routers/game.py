@@ -1,13 +1,20 @@
 """Game table — the main VTT page with map, tokens, dice, chat, and video."""
 
 import json
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+import os
+import uuid
+from pathlib import Path
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, Form, UploadFile, File
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 
 from app.database import get_db
 from app.templating import render as _render
 
 router = APIRouter()
+
+# Uploads directory
+_UPLOADS = Path(__file__).resolve().parent.parent / "static" / "uploads"
+_UPLOADS.mkdir(parents=True, exist_ok=True)
 
 
 # ── In-memory connection registry ─────────────────────────────
@@ -51,6 +58,44 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+
+
+# ── Map Upload ─────────────────────────────────────────────────
+
+@router.post("/{invite_code}/upload-map")
+async def upload_map(invite_code: str, map_file: UploadFile = File(...)):
+    """Upload a custom map image for this campaign."""
+    with get_db() as db:
+        campaign = db.execute(
+            "SELECT * FROM campaigns WHERE invite_code = ?", (invite_code,)
+        ).fetchone()
+        if not campaign:
+            return JSONResponse({"error": "Campaign not found"}, status_code=404)
+
+    # Validate file type
+    content_type = map_file.content_type or ""
+    if not any(t in content_type for t in ("image/png", "image/jpeg", "image/webp", "image/gif")):
+        return JSONResponse({"error": "Only PNG, JPEG, WebP, and GIF images are supported"}, status_code=400)
+
+    # Save with unique filename
+    ext = Path(map_file.filename).suffix if map_file.filename else ".png"
+    if ext.lower() not in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+        ext = ".png"
+    filename = f"{uuid.uuid4().hex}{ext}"
+    filepath = _UPLOADS / filename
+
+    contents = await map_file.read()
+    filepath.write_bytes(contents)
+
+    # Save to database
+    image_url = f"/static/uploads/{filename}"
+    with get_db() as db:
+        db.execute(
+            "INSERT INTO map_images (campaign_id, image_url) VALUES (?, ?)",
+            (campaign["id"], image_url),
+        )
+
+    return JSONResponse({"url": image_url, "filename": filename})
 
 
 # ── Game table page ───────────────────────────────────────────

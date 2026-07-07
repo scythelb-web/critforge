@@ -357,6 +357,14 @@ footer, .top-nav { display: none; }
     <button onclick="addToken()">➕ Add Token</button>
     <button onclick="removeSelectedToken()">🗑 Remove Selected</button>
     <hr>
+    <div class="dm-label" style="font-size:9px;">CUSTOM MAP</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;">
+        <input type="text" id="map-url-input" placeholder="Paste image URL..." style="flex:1;min-width:120px;">
+        <button onclick="setMapUrl()" style="white-space:nowrap;">🌐 Load URL</button>
+    </div>
+    <input type="file" id="map-file-input" accept="image/*" onchange="uploadMapFile()" style="display:none;">
+    <button onclick="document.getElementById('map-file-input').click()" style="margin-top:4px;width:100%;background:#0f3460;border-color:#4fc3f7;color:#4fc3f7;">📁 Upload Map File</button>
+    <hr>
     <div class="dm-label" style="font-size:9px;">MAP GENERATOR</div>
     <button onclick="generateMap('dungeon')">🏰 Dungeon</button>
     <button onclick="generateMap('town')">🏘️ Town</button>
@@ -733,6 +741,29 @@ function setMapUrl() {
     const url = document.getElementById('map-url-input').value.trim();
     if (!url || !ws || ws.readyState !== WebSocket.OPEN) return;
     ws.send(JSON.stringify({ type: 'map_set', image_url: url }));
+}
+async function uploadMapFile() {
+    if (!iAmDM) return;
+    const fileInput = document.getElementById('map-file-input');
+    const file = fileInput.files[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { alert('File too large — max 10MB'); return; }
+
+    const formData = new FormData();
+    formData.append('map_file', file);
+
+    try {
+        const resp = await fetch(`/game/${INVITE_CODE}/upload-map`, { method: 'POST', body: formData });
+        const data = await resp.json();
+        if (data.error) { alert(data.error); return; }
+        mapImage = data.url; loadBg(); draw();
+        document.getElementById('map-url-input').value = data.url;
+        if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'map_set', image_url: data.url }));
+        addChat('system', `📁 Map uploaded: ${data.filename}`);
+    } catch (e) {
+        alert('Upload failed: ' + e.message);
+    }
+    fileInput.value = '';
 }
 function resetMap() {
     if (!iAmDM || !confirm('Clear the map?')) return;
