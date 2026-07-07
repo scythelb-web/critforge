@@ -10,6 +10,14 @@ from app.templating import render as _render
 router = APIRouter()
 
 
+@router.get("/join")
+async def join_campaign_page(request: Request, code: str = ""):
+    """Join a campaign by invite code — redirects to lobby, or show join form."""
+    if code:
+        return RedirectResponse(f"/campaigns/{code.strip()}", status_code=303)
+    return _render(request, "campaign_join.html")
+
+
 def _generate_invite_code() -> str:
     return secrets.token_hex(4)  # 8-char hex code
 

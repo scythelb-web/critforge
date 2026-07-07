@@ -13,6 +13,16 @@
         <a href="/characters/new" class="btn btn-success btn-lg">Build a Character</a>
         <a href="/characters/import" class="btn btn-outline btn-lg">📄 Import from PDF</a>
     </div>
+
+    <div class="join-campaign-hero">
+        <p style="margin:0 0 8px;color:#aaa;font-size:14px;">Got an invite code from your DM?</p>
+        <form method="GET" action="/campaigns/join" style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+            <input type="text" name="code" placeholder="Enter invite code (e.g. a1b2c3d4)"
+                   style="padding:12px 16px;border:2px solid #333;border-radius:8px;background:#1a1a2e;color:#fff;font-size:15px;width:300px;max-width:100%;"
+                   required>
+            <button type="submit" class="btn btn-success btn-lg">🔗 Join Campaign</button>
+        </form>
+    </div>
 </section>
 
 <section class="features">

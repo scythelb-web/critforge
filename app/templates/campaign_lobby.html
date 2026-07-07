@@ -8,7 +8,7 @@
         <p class="dm-tag">DM: {{ campaign.dm_name }}</p>
         <div class="invite-box">
             <span>Invite Link:</span>
-            <code id="invite-link">{{ request.base_url }}game/{{ campaign.invite_code }}</code>
+            <code id="invite-link">{{ request.base_url }}campaigns/{{ campaign.invite_code }}</code>
             <button onclick="copyInvite()" class="btn btn-sm">📋 Copy</button>
         </div>
     </div>

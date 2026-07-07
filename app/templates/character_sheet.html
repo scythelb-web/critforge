@@ -17,6 +17,8 @@
             <button onclick="downloadPDF()" class="btn btn-sm">📄 Download PDF</button>
             {% if campaign %}
             <a href="/game/{{ campaign.invite_code }}" class="btn btn-sm btn-success">🎲 Game Table</a>
+            {% else %}
+            <a href="/campaigns/join" class="btn btn-sm btn-success">🔗 Join a Campaign</a>
             {% endif %}
         </div>
     </div>
